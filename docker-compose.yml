@@ -1,0 +1,50 @@
+version: '3'
+
+services:
+  traefik:
+    image: traefik:v2.10
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--log.level=DEBUG"
+      - "--experimental.localPlugins.abtest.moduleName=github.com/daemonp/traefik-forklift-middleware"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./:/plugins-local/src/github.com/daemonp/traefik-forklift-middleware
+    labels:
+      - "traefik.enable=true"
+
+  echo1:
+    image: hashicorp/http-echo
+    command: ["-text", "Hello from V1"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.echo1.loadbalancer.server.port=5678"
+
+  echo2:
+    image: hashicorp/http-echo
+    command: ["-text", "Hello from V2"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.echo2.loadbalancer.server.port=5678"
+
+  abtest:
+    image: traefik/whoami
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.abtest.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.abtest.entrypoints=web"
+      - "traefik.http.routers.abtest.middlewares=abtest-middleware"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.v1backend=http://echo1:5678"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.v2backend=http://echo2:5678"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].path=/"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].method=GET"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].percentage=50"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].path=/"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].method=POST"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].midValue=a"

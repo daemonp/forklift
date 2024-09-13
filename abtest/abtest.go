@@ -1,24 +1,24 @@
 package abtest
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"hash/fnv"
 	"io"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
-
-	"github.com/patrickmn/go-cache"
-	"github.com/sirupsen/logrus"
 )
 
 const (
-	sessionCookieName = "abtest_session_id"
-	sessionCookieMaxAge = 86400 * 30 // 30 days
+	sessionCookieName    = "abtest_session_id"
+	sessionCookieMaxAge  = 86400 * 30 // 30 days
+	cacheDuration        = 24 * time.Hour
+	cacheCleanupInterval = 10 * time.Minute
 )
 
 // Config holds the configuration for the AB testing middleware
@@ -53,35 +53,16 @@ type ABTest struct {
 	config     *Config
 	name       string
 	ruleEngine *RuleEngine
-	logger     *logrus.Logger
-}
-
-// generateSessionID creates a new random session ID
-func (a *ABTest) generateSessionID() (string, error) {
-	b := make([]byte, 32)
-	_, err := rand.Read(b)
-	if err != nil {
-		return "", err
-	}
-	return base64.URLEncoding.EncodeToString(b), nil
 }
 
 // RuleEngine handles rule matching and caching
 type RuleEngine struct {
 	config *Config
-	cache  *cache.Cache
+	cache  *sync.Map
 }
 
-// CreateConfig creates a new Config
-func CreateConfig() *Config {
-	return &Config{}
-}
-
-// New creates a new AB testing middleware
-func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
-	logger := logrus.New()
-	logger.SetLevel(logrus.InfoLevel)
-
+// NewABTest creates a new AB testing middleware
+func NewABTest(next http.Handler, config *Config, name string) *ABTest {
 	// Sort rules by priority (higher priority first)
 	sort.Slice(config.Rules, func(i, j int) bool {
 		return config.Rules[i].Priority > config.Rules[j].Priority
@@ -89,16 +70,27 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 
 	ruleEngine := &RuleEngine{
 		config: config,
-		cache:  cache.New(24*time.Hour, 10*time.Minute),
+		cache:  &sync.Map{},
 	}
+
+	go ruleEngine.cleanupCache()
 
 	return &ABTest{
 		next:       next,
 		config:     config,
 		name:       name,
 		ruleEngine: ruleEngine,
-		logger:     logger,
-	}, nil
+	}
+}
+
+// generateSessionID creates a new random session ID
+func generateSessionID() (string, error) {
+	b := make([]byte, 32)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(b), nil
 }
 
 // ServeHTTP implements the http.Handler interface
@@ -108,9 +100,9 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	cookie, err := req.Cookie(sessionCookieName)
 	if err == http.ErrNoCookie {
 		// Generate new session ID if cookie doesn't exist
-		sessionID, err = a.generateSessionID()
+		sessionID, err = generateSessionID()
 		if err != nil {
-			a.logger.Errorf("Error generating session ID: %v", err)
+			log.Printf("Error generating session ID: %v", err)
 			http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
 			return
 		}
@@ -125,7 +117,7 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 		http.SetCookie(rw, cookie)
 	} else if err != nil {
-		a.logger.Errorf("Error reading session cookie: %v", err)
+		log.Printf("Error reading session cookie: %v", err)
 		http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
 		return
 	} else {
@@ -144,19 +136,12 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	// Log the decision for debugging
-	a.logger.WithFields(logrus.Fields{
-		"sessionID": sessionID,
-		"backend":   backend,
-	}).Debug("Routing decision made")
-
 	// Add a header to indicate the selected backend
 	rw.Header().Set("X-Selected-Backend", backend)
 
-	a.logger.Infof("Routing request to backend: %s", backend)
+	log.Printf("Routing request to backend: %s", backend)
 
 	// Create a new request to the selected backend
-	// Handle path prefix rewrite
 	var pathPrefix string
 	for _, rule := range a.config.Rules {
 		if a.ruleEngine.ruleMatches(req, rule) {
@@ -165,11 +150,9 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	// Create a new request to the selected backend
 	backendPath := req.URL.Path
 	var backendURL string
 	if pathPrefix != "" && strings.HasPrefix(backendPath, pathPrefix) {
-		// For API routing, we want to keep the original path
 		trimmedPath := strings.TrimPrefix(backendPath, pathPrefix)
 		if trimmedPath == "" {
 			trimmedPath = "/"
@@ -180,7 +163,7 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 	proxyReq, err := http.NewRequest(req.Method, backendURL, req.Body)
 	if err != nil {
-		a.logger.Errorf("Error creating proxy request: %v", err)
+		log.Printf("Error creating proxy request: %v", err)
 		http.Error(rw, "Error creating proxy request", http.StatusInternalServerError)
 		return
 	}
@@ -194,18 +177,11 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// Update the Host header to match the backend
 	proxyReq.Host = proxyReq.URL.Host
 
-	// Log the path rewrite for debugging
-	a.logger.WithFields(logrus.Fields{
-		"originalPath": req.URL.Path,
-		"rewrittenPath": backendPath,
-		"backend": backend,
-	}).Debug("Path rewrite applied")
-
 	// Send the request to the selected backend
 	client := &http.Client{}
 	resp, err := client.Do(proxyReq)
 	if err != nil {
-		a.logger.Errorf("Error sending request to backend: %v", err)
+		log.Printf("Error sending request to backend: %v", err)
 		http.Error(rw, "Error sending request to backend", http.StatusInternalServerError)
 		return
 	}
@@ -220,24 +196,8 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(resp.StatusCode)
 	_, err = io.Copy(rw, resp.Body)
 	if err != nil {
-		a.logger.Errorf("Error copying response body: %v", err)
+		log.Printf("Error copying response body: %v", err)
 	}
-}
-
-// SelectBackend chooses the appropriate backend based on the request, rules, and session ID
-func (re *RuleEngine) SelectBackend(req *http.Request, sessionID string) string {
-	for _, rule := range re.config.Rules {
-		if re.ruleMatches(req, rule) {
-			if rule.Backend != "" {
-				return rule.Backend
-			}
-			if re.shouldRouteToV2(sessionID, rule.Percentage) {
-				return re.config.V2Backend
-			}
-			return re.config.V1Backend
-		}
-	}
-	return re.config.V1Backend
 }
 
 // ruleMatches checks if a request matches a given rule
@@ -334,7 +294,7 @@ func (re *RuleEngine) shouldRouteToV2(sessionID string, percentage float64) bool
 	key := sessionID
 
 	// Check if we have a cached decision for this key
-	if cachedDecision, found := re.cache.Get(key); found {
+	if cachedDecision, found := re.cache.Load(key); found {
 		return cachedDecision.(bool)
 	}
 
@@ -347,7 +307,25 @@ func (re *RuleEngine) shouldRouteToV2(sessionID string, percentage float64) bool
 	decision := float64(hashValue)/float64(^uint32(0)) < (percentage / 100.0)
 
 	// Cache the decision
-	re.cache.Set(key, decision, cache.DefaultExpiration)
+	re.cache.Store(key, decision)
 
 	return decision
+}
+
+// cleanupCache periodically removes old entries from the cache
+func (re *RuleEngine) cleanupCache() {
+	ticker := time.NewTicker(cacheCleanupInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		now := time.Now()
+		re.cache.Range(func(key, value interface{}) bool {
+			if cacheEntry, ok := value.(time.Time); ok {
+				if now.Sub(cacheEntry) > cacheDuration {
+					re.cache.Delete(key)
+				}
+			}
+			return true
+		})
+	}
 }
