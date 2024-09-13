@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: abtest-plugin-config
+  namespace: forklift-test
+data:
+  abtest.yaml: |
+    v1Backend: "http://v1-service:80"
+    v2Backend: "http://v2-service:80"
+    rules:
+      - path: "/api/.*"
+        method: "GET"
+        conditions:
+          - type: "header"
+            parameter: "X-Version"
+            operator: "eq"
+            value: "v2"
+        backend: "v2Backend"
+      - path: "/api/.*"
+        method: "GET"
+        percentage: 0.5
+        backend: "v2Backend"
+  abtest.so: |
+    {{ .Files.Get "abtest.so" | b64enc }}
