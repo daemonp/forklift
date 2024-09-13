@@ -20,7 +20,7 @@ func NewTestServer(handler http.HandlerFunc) *httptest.Server {
 func NewV1TestServer() *httptest.Server {
 	return NewTestServer(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("V1 Backend"))
+		_, _ = w.Write([]byte("V1 Backend"))
 	})
 }
 
@@ -28,7 +28,7 @@ func NewV1TestServer() *httptest.Server {
 func NewV2TestServer() *httptest.Server {
 	return NewTestServer(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("V2 Backend"))
+		_, _ = w.Write([]byte("V2 Backend"))
 	})
 }
 
@@ -36,7 +36,7 @@ func NewV2TestServer() *httptest.Server {
 func NewTestServerWithPathRewrite() *httptest.Server {
 	return NewTestServer(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(fmt.Sprintf("Received path: %s", r.URL.Path)))
+		_, _ = w.Write([]byte(fmt.Sprintf("Received path: %s", r.URL.Path)))
 	})
 }
 
@@ -113,13 +113,13 @@ func TestABTestPathPrefixRewrite(t *testing.T) {
 	// Create test servers for V1 and V2 backends
 	v1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(fmt.Sprintf("V1 Backend: %s", r.URL.Path)))
+		_, _ = w.Write([]byte(fmt.Sprintf("V1 Backend: %s", r.URL.Path)))
 	}))
 	defer v1Server.Close()
 
 	v2Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(fmt.Sprintf("V2 Backend: %s", r.URL.Path)))
+		_, _ = w.Write([]byte(fmt.Sprintf("V2 Backend: %s", r.URL.Path)))
 	}))
 	defer v2Server.Close()
 
@@ -137,7 +137,10 @@ func TestABTestPathPrefixRewrite(t *testing.T) {
 	}
 
 	// Create ABTest middleware
-	abTestHandler := abtest.NewABTest(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}), config, "test")
+	abTestHandler, err := abtest.NewABTest(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}), config, "test")
+	if err != nil {
+		t.Fatalf("Failed to create ABTest middleware: %v", err)
+	}
 
 	// Create test server with ABTest middleware
 	testServer := httptest.NewServer(abTestHandler)

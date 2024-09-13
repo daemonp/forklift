@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"hash/fnv"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -48,7 +48,25 @@ type RuleEngine struct {
 }
 
 // NewABTest creates a new AB testing middleware
-func NewABTest(next http.Handler, config *Config, name string) *ABTest {
+
+// NewABTest creates a new AB testing middleware
+func NewABTest(next http.Handler, config *Config, name string) (*ABTest, error) {
+	if config == nil {
+		return nil, fmt.Errorf("empty configuration")
+	}
+	if config.V1Backend == "" {
+		return nil, fmt.Errorf("missing V1Backend")
+	}
+	if config.V2Backend == "" {
+		return nil, fmt.Errorf("missing V2Backend")
+	}
+	for _, rule := range config.Rules {
+		if rule.Percentage < 0 || rule.Percentage > 100 {
+			return nil, fmt.Errorf("invalid percentage: must be between 0 and 100")
+		}
+		// Remove the check for the Operator field as it doesn't exist in the config.Rule struct
+	}
+
 	// Sort rules by priority (higher priority first)
 	sort.Slice(config.Rules, func(i, j int) bool {
 		return config.Rules[i].Priority > config.Rules[j].Priority
@@ -66,7 +84,7 @@ func NewABTest(next http.Handler, config *Config, name string) *ABTest {
 		config:     config,
 		name:       name,
 		ruleEngine: ruleEngine,
-	}
+	}, nil
 }
 
 // generateSessionID creates a new random session ID
@@ -124,7 +142,7 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if req.Method == "POST" && req.Body != nil {
 		// Read the body
 		var err error
-		body, err = ioutil.ReadAll(req.Body)
+		body, err = io.ReadAll(req.Body)
 		if err != nil {
 			log.Printf("Error reading request body: %v", err)
 		} else {
@@ -132,7 +150,7 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 				log.Printf("Request body: %s", string(body))
 			}
 			// Restore the body for further processing
-			req.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+			req.Body = io.NopCloser(bytes.NewBuffer(body))
 		}
 
 		// Parse the form
@@ -312,6 +330,7 @@ func checkCookie(req *http.Request, condition RuleCondition) bool {
 	return compareValues(cookie.Value, condition.Operator, condition.Value)
 }
 
+// compareValues compares two string values based on the given operator
 func compareValues(actual, operator, expected string) bool {
 	switch strings.ToLower(operator) {
 	case "eq", "equals":
@@ -323,19 +342,32 @@ func compareValues(actual, operator, expected string) bool {
 	case "suffix":
 		return strings.HasSuffix(actual, expected)
 	case "gt":
-		actualFloat, err1 := strconv.ParseFloat(actual, 64)
-		expectedFloat, err2 := strconv.ParseFloat(expected, 64)
-		if err1 == nil && err2 == nil {
-			return actualFloat > expectedFloat
-		}
-		return false
+		actualFloat, expectedFloat := parseFloats(actual, expected)
+		return actualFloat > expectedFloat
 	default:
 		return false
 	}
 }
 
+// parseFloats attempts to parse two strings as float64 values
+func parseFloats(s1, s2 string) (float64, float64) {
+	f1, _ := strconv.ParseFloat(s1, 64)
+	f2, _ := strconv.ParseFloat(s2, 64)
+	return f1, f2
+}
+
 // shouldRouteToV2 determines if the request should be routed to V2 based on the percentage and session ID
 func (re *RuleEngine) shouldRouteToV2(sessionID string, percentage float64) bool {
+	// Always route to V1 if percentage is 0
+	if percentage == 0 {
+		return false
+	}
+
+	// Always route to V2 if percentage is 100
+	if percentage == 100 {
+		return true
+	}
+
 	// Use the session ID as the key for consistent routing
 	key := sessionID
 
