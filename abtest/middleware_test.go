@@ -334,7 +334,10 @@ func TestSessionAffinityExtended(t *testing.T) {
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Next handler"))
+		_, err := w.Write([]byte("Next handler"))
+		if err != nil {
+			t.Errorf("Error writing response: %v", err)
+		}
 	})
 
 	middleware, err := abtest.NewABTest(next, config, "test-abtest")
@@ -775,13 +778,19 @@ func TestZeroAndHundredPercentRouting(t *testing.T) {
 func TestSelectBackend(t *testing.T) {
 	v1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("V1 Backend: " + r.URL.Path))
+		_, err := w.Write([]byte("V1 Backend: " + r.URL.Path))
+		if err != nil {
+			t.Errorf("Error writing response for V1 Backend: %v", err)
+		}
 	}))
 	defer v1Server.Close()
 
 	v2Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("V2 Backend: " + r.URL.Path))
+		_, err := w.Write([]byte("V2 Backend: " + r.URL.Path))
+		if err != nil {
+			t.Errorf("Error writing response for V2 Backend: %v", err)
+		}
 	}))
 	defer v2Server.Close()
 
@@ -836,7 +845,10 @@ func TestSelectBackend(t *testing.T) {
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Next handler"))
+		_, err := w.Write([]byte("Next handler"))
+		if err != nil {
+			t.Errorf("Error writing response: %v", err)
+		}
 	})
 
 	middleware, err := abtest.NewABTest(next, config, "test-abtest")
