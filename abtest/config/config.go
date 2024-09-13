@@ -23,4 +23,5 @@ type RuleCondition struct {
 	Parameter string
 	Operator  string
 	Value     string
+	QueryParam string // New field for GET query parameters
 }

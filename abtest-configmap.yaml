@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: abtest-plugin-config
-  namespace: test
-data:
-  abtest.so: |
-    {{ .Files.Get "abtest.so" | b64enc }}

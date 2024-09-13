@@ -380,13 +380,26 @@ func TestSelectBackend(t *testing.T) {
 				Backend:    v2Server.URL,
 			},
 			{
+				Path:    "/query-test",
+				Method:  "GET",
+				Backend: v2Server.URL,
+				Conditions: []abtest.RuleCondition{
+					{
+						Type:      "query",
+						QueryParam: "mid",
+						Operator:  "eq",
+						Value:     "two",
+					},
+				},
+			},
+			{
 				Path:    "/complex",
 				Method:  "POST",
 				Backend: v2Server.URL,
 				Conditions: []abtest.RuleCondition{
 					{
 						Type:      "query",
-						Parameter: "version",
+						QueryParam: "version",
 						Operator:  "eq",
 						Value:     "2",
 					},
@@ -420,6 +433,8 @@ func TestSelectBackend(t *testing.T) {
 		{"API routing", "GET", "/api/users", "", nil, "V2 Backend: /api/users"},
 		{"Complex routing - match", "POST", "/complex", "version=2", map[string]string{"X-Custom-Header": "special-value"}, "V2 Backend: /complex"},
 		{"Complex routing - no match", "POST", "/complex", "version=1", map[string]string{"X-Custom-Header": "normal-value"}, "V1 Backend: /complex"},
+		{"GET query routing - match", "GET", "/query-test", "mid=two", nil, "V2 Backend: /query-test"},
+		{"GET query routing - no match", "GET", "/query-test", "mid=one", nil, "V1 Backend: /query-test"},
 		{"No matching rule", "GET", "/unknown", "", nil, "V1 Backend: /unknown"},
 	}
 

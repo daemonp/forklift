@@ -293,8 +293,15 @@ func checkHeader(req *http.Request, condition RuleCondition) bool {
 }
 
 func checkQuery(req *http.Request, condition RuleCondition) bool {
-	queryValue := req.URL.Query().Get(condition.Parameter)
-	return compareValues(queryValue, condition.Operator, condition.Value)
+	queryValue := req.URL.Query().Get(condition.QueryParam)
+	if debug {
+		log.Printf("Query parameter %s: %s", condition.QueryParam, queryValue)
+	}
+	result := compareValues(queryValue, condition.Operator, condition.Value)
+	if debug {
+		log.Printf("Query condition result: %v", result)
+	}
+	return result
 }
 
 func checkCookie(req *http.Request, condition RuleCondition) bool {
