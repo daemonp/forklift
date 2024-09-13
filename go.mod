@@ -1,4 +1,4 @@
-module github.com/traefik/traefik-forklift-middleware
+module github.com/daemonp/traefik-forklift-middleware
 
 go 1.22
 

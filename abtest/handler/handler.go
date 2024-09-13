@@ -20,7 +20,7 @@ func New(config *config.Config, ruleEngine *engine.RuleEngine) *ABTestHandler {
 }
 
 func (h *ABTestHandler) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	backend, _ := h.selectBackend(req)
+	_, _ = h.selectBackend(req)
 	// Use the selected backend to route the request
 	// Implementation details omitted for brevity
 }

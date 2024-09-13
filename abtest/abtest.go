@@ -49,6 +49,11 @@ type RuleEngine struct {
 	cache  *cache.Cache
 }
 
+// CreateConfig creates a new Config
+func CreateConfig() *Config {
+	return &Config{}
+}
+
 // New creates a new AB testing middleware
 func New(ctx context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
 	logger := logrus.New()
@@ -80,13 +85,9 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	// Add a header to indicate the selected backend
 	rw.Header().Set("X-Selected-Backend", backend)
 
-	// Modify the request to route to the selected backend
-	req.URL.Host = backend
-	req.URL.Scheme = "http" // or "https" depending on your setup
-
 	a.logger.Infof("Routing request to backend: %s", backend)
 
-	// Call the next handler with the modified request
+	// Call the next handler
 	a.next.ServeHTTP(rw, req)
 }
 
@@ -191,9 +192,4 @@ func (re *RuleEngine) shouldRouteToV2(req *http.Request, percentage float64) boo
 	re.cache.Set(key, decision, cache.DefaultExpiration)
 
 	return decision
-}
-
-// CreateConfig creates a new Config
-func CreateConfig() *Config {
-	return &Config{}
 }
