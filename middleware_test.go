@@ -3,26 +3,20 @@ package main
 import (
 	"context"
 	"net/http"
-	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
 
 	"github.com/daemonp/traefik-forklift-middleware/abtest"
+	abtest_testing "github.com/daemonp/traefik-forklift-middleware/abtest/testing"
 )
 
 func TestABTestMiddleware(t *testing.T) {
-	// Create mock servers
-	v1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("V1 Backend"))
-	}))
+	// Create mock servers using the new testing package
+	v1Server := abtest_testing.NewV1TestServer()
 	defer v1Server.Close()
 
-	v2Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("V2 Backend"))
-	}))
+	v2Server := abtest_testing.NewV2TestServer()
 	defer v2Server.Close()
 
 	config := &abtest.Config{
@@ -137,16 +131,10 @@ func TestABTestMiddleware(t *testing.T) {
 }
 
 func TestGradualRollout(t *testing.T) {
-	v1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("V1 Backend"))
-	}))
+	v1Server := abtest_testing.NewV1TestServer()
 	defer v1Server.Close()
 
-	v2Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("V2 Backend"))
-	}))
+	v2Server := abtest_testing.NewV2TestServer()
 	defer v2Server.Close()
 
 	config := &abtest.Config{
@@ -192,16 +180,10 @@ func TestGradualRollout(t *testing.T) {
 }
 
 func TestSessionAffinity(t *testing.T) {
-	v1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("V1 Backend"))
-	}))
+	v1Server := abtest_testing.NewV1TestServer()
 	defer v1Server.Close()
 
-	v2Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("V2 Backend"))
-	}))
+	v2Server := abtest_testing.NewV2TestServer()
 	defer v2Server.Close()
 
 	config := &abtest.Config{

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"your-project/abtest/config"
+	"github.com/daemonp/traefik-forklift-middleware/abtest/config"
 )
 
 type RuleEngine struct {

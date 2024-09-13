@@ -3,8 +3,8 @@ package handler
 import (
 	"net/http"
 
-	"your-project/abtest/config"
-	"your-project/abtest/engine"
+	"github.com/daemonp/traefik-forklift-middleware/abtest/config"
+	"github.com/daemonp/traefik-forklift-middleware/abtest/engine"
 )
 
 type ABTestHandler struct {
