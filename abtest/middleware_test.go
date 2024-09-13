@@ -1,4 +1,4 @@
-package main
+package abtest
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/daemonp/traefik-forklift-middleware/abtest"
 	abtest_testing "github.com/daemonp/traefik-forklift-middleware/abtest/testing"
 )
 
