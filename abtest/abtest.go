@@ -1,7 +1,6 @@
 package abtest
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
@@ -26,6 +25,7 @@ const (
 	sessionCookieMaxAge  = 86400 * 30 // 30 days
 	cacheDuration        = 24 * time.Hour
 	cacheCleanupInterval = 10 * time.Minute
+	maxSessionIDLength   = 128
 )
 
 // Use the Config type from the config package
@@ -48,8 +48,6 @@ type RuleEngine struct {
 }
 
 // NewABTest creates a new AB testing middleware
-
-// NewABTest creates a new AB testing middleware
 func NewABTest(next http.Handler, config *Config, name string) (*ABTest, error) {
 	if config == nil {
 		return nil, fmt.Errorf("empty configuration")
@@ -64,7 +62,6 @@ func NewABTest(next http.Handler, config *Config, name string) (*ABTest, error) 
 		if rule.Percentage < 0 || rule.Percentage > 100 {
 			return nil, fmt.Errorf("invalid percentage: must be between 0 and 100")
 		}
-		// Remove the check for the Operator field as it doesn't exist in the config.Rule struct
 	}
 
 	// Sort rules by priority (higher priority first)
@@ -105,62 +102,21 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// Check for existing session cookie
-	var sessionID string
-	cookie, err := req.Cookie(sessionCookieName)
-	if err == http.ErrNoCookie {
-		// Generate new session ID if cookie doesn't exist
-		sessionID, err = generateSessionID()
-		if err != nil {
-			log.Printf("Error generating session ID: %v", err)
-			http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
-			return
-		}
-		cookie = &http.Cookie{
-			Name:     sessionCookieName,
-			Value:    sessionID,
-			Path:     "/",
-			MaxAge:   sessionCookieMaxAge,
-			HttpOnly: true,
-			Secure:   req.TLS != nil, // Set Secure flag if the request is over HTTPS
-			SameSite: http.SameSiteStrictMode,
-		}
-		http.SetCookie(rw, cookie)
-	} else if err != nil {
-		log.Printf("Error reading session cookie: %v", err)
+	sessionID := getOrCreateSessionID(rw, req)
+	if sessionID == "" {
+		log.Printf("Error handling session ID")
 		http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
 		return
-	} else {
-		sessionID = cookie.Value
+	}
+
+	if req == nil {
+		log.Printf("Error: Request is nil")
+		http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
+		return
 	}
 
 	if debug {
 		log.Printf("Session ID: %s", sessionID)
-	}
-
-	// Debug: Log POST payload
-	var body []byte
-	if req.Method == "POST" && req.Body != nil {
-		// Read the body
-		var err error
-		body, err = io.ReadAll(req.Body)
-		if err != nil {
-			log.Printf("Error reading request body: %v", err)
-		} else {
-			if debug {
-				log.Printf("Request body: %s", string(body))
-			}
-			// Restore the body for further processing
-			req.Body = io.NopCloser(bytes.NewBuffer(body))
-		}
-
-		// Parse the form
-		if err := req.ParseForm(); err != nil {
-			log.Printf("Error parsing form: %v", err)
-		} else if debug {
-			log.Printf("POST form data: %v", req.PostForm)
-		}
-	} else if req.Method == "POST" {
-		log.Printf("POST request with nil body")
 	}
 
 	backend := a.config.V1Backend
@@ -226,11 +182,13 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	// Send the request to the selected backend
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
 	resp, err := client.Do(proxyReq)
 	if err != nil {
 		log.Printf("Error sending request to backend: %v", err)
-		http.Error(rw, "Error sending request to backend", http.StatusInternalServerError)
+		http.Error(rw, "Error sending request to backend", http.StatusBadGateway)
 		return
 	}
 	defer resp.Body.Close()
@@ -245,6 +203,9 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	_, err = io.Copy(rw, resp.Body)
 	if err != nil {
 		log.Printf("Error copying response body: %v", err)
+		// If we've already started writing the response, we can't change the status code
+		// So we'll just log the error and return
+		return
 	}
 
 	if debug {
@@ -264,6 +225,9 @@ func (re *RuleEngine) ruleMatches(req *http.Request, rule RoutingRule) bool {
 	if rule.Method != "" && rule.Method != req.Method {
 		return false
 	}
+	if debug {
+		log.Printf("Checking conditions for path: %s", req.URL.Path)
+	}
 	return re.checkConditions(req, rule.Conditions)
 }
 
@@ -279,18 +243,21 @@ func (re *RuleEngine) checkConditions(req *http.Request, conditions []RuleCondit
 
 // checkCondition checks a single condition
 func (re *RuleEngine) checkCondition(req *http.Request, condition RuleCondition) bool {
+	result := false
 	switch strings.ToLower(condition.Type) {
 	case "header":
-		return checkHeader(req, condition)
+		result = checkHeader(req, condition)
 	case "query":
-		return checkQuery(req, condition)
+		result = checkQuery(req, condition)
 	case "cookie":
-		return checkCookie(req, condition)
+		result = checkCookie(req, condition)
 	case "form":
-		return checkForm(req, condition)
-	default:
-		return false
+		result = checkForm(req, condition)
 	}
+	if debug {
+		log.Printf("Condition check result for %s %s: %v", condition.Type, condition.Parameter, result)
+	}
+	return result
 }
 
 func checkForm(req *http.Request, condition RuleCondition) bool {
@@ -314,6 +281,7 @@ func checkQuery(req *http.Request, condition RuleCondition) bool {
 	queryValue := req.URL.Query().Get(condition.QueryParam)
 	if debug {
 		log.Printf("Query parameter %s: %s", condition.QueryParam, queryValue)
+		log.Printf("Comparing query value: %s %s %s", queryValue, condition.Operator, condition.Value)
 	}
 	result := compareValues(queryValue, condition.Operator, condition.Value)
 	if debug {
@@ -408,4 +376,39 @@ func (re *RuleEngine) cleanupCache() {
 			return true
 		})
 	}
+}
+
+// isValidSessionID checks if the given session ID is valid
+func isValidSessionID(sessionID string) bool {
+	if len(sessionID) == 0 || len(sessionID) > maxSessionIDLength {
+		return false
+	}
+	_, err := base64.URLEncoding.DecodeString(sessionID)
+	return err == nil
+}
+
+// getOrCreateSessionID retrieves the existing session ID or creates a new one
+func getOrCreateSessionID(rw http.ResponseWriter, req *http.Request) string {
+	cookie, err := req.Cookie(sessionCookieName)
+	if err == nil && cookie.Value != "" && isValidSessionID(cookie.Value) {
+		return cookie.Value
+	}
+
+	sessionID, err := generateSessionID()
+	if err != nil {
+		log.Printf("Error generating session ID: %v", err)
+		return ""
+	}
+
+	http.SetCookie(rw, &http.Cookie{
+		Name:     sessionCookieName,
+		Value:    sessionID,
+		Path:     "/",
+		MaxAge:   sessionCookieMaxAge,
+		HttpOnly: true,
+		Secure:   req.TLS != nil,
+		SameSite: http.SameSiteStrictMode,
+	})
+
+	return sessionID
 }

@@ -8,10 +8,13 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/daemonp/traefik-forklift-middleware/abtest"
 	abtest_testing "github.com/daemonp/traefik-forklift-middleware/abtest/testing"
 )
+
+const sessionCookieName = "abtest_session_id"
 
 func TestABTestMiddleware(t *testing.T) {
 	// Create mock servers using the new testing package
@@ -250,7 +253,10 @@ func TestSessionAffinity(t *testing.T) {
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Next handler"))
+		_, err := w.Write([]byte("Next handler"))
+		if err != nil {
+			t.Errorf("Error writing response: %v", err)
+		}
 	})
 
 	middleware, err := abtest.NewABTest(next, config, "test-abtest")
@@ -370,6 +376,280 @@ func TestSessionAffinityExtended(t *testing.T) {
 	}
 }
 
+func TestMultipleRulesWithSamePath(t *testing.T) {
+	v1Server := abtest_testing.NewV1TestServer()
+	defer v1Server.Close()
+
+	v2Server := abtest_testing.NewV2TestServer()
+	defer v2Server.Close()
+
+	config := &abtest.Config{
+		V1Backend: v1Server.URL,
+		V2Backend: v2Server.URL,
+		Rules: []abtest.RoutingRule{
+			{
+				Path:     "/test",
+				Method:   "GET",
+				Backend:  v1Server.URL,
+				Priority: 1,
+			},
+			{
+				Path:     "/test",
+				Method:   "GET",
+				Backend:  v2Server.URL,
+				Priority: 2,
+				Conditions: []abtest.RuleCondition{
+					{
+						Type:      "header",
+						Parameter: "X-Test",
+						Operator:  "eq",
+						Value:     "true",
+					},
+				},
+			},
+		},
+	}
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Next handler should not be called")
+	})
+
+	middleware, err := abtest.NewABTest(next, config, "test-abtest")
+	if err != nil {
+		t.Fatalf("Failed to create AB test middleware: %v", err)
+	}
+
+	tests := []struct {
+		name           string
+		headers        map[string]string
+		expectedBackend string
+	}{
+		{
+			name:           "No special header",
+			headers:        nil,
+			expectedBackend: "V1 Backend",
+		},
+		{
+			name:           "With special header",
+			headers:        map[string]string{"X-Test": "true"},
+			expectedBackend: "V2 Backend",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, _ := http.NewRequest("GET", "/test", nil)
+			for k, v := range tt.headers {
+				req.Header.Set(k, v)
+			}
+
+			rr := httptest.NewRecorder()
+			middleware.ServeHTTP(rr, req)
+
+			if !strings.Contains(rr.Body.String(), tt.expectedBackend) {
+				t.Errorf("Expected %s, got %s", tt.expectedBackend, rr.Body.String())
+			}
+		})
+	}
+}
+
+func TestInvalidSessionIDs(t *testing.T) {
+	v1Server := abtest_testing.NewV1TestServer()
+	defer v1Server.Close()
+
+	v2Server := abtest_testing.NewV2TestServer()
+	defer v2Server.Close()
+
+	config := &abtest.Config{
+		V1Backend: v1Server.URL,
+		V2Backend: v2Server.URL,
+		Rules: []abtest.RoutingRule{
+			{
+				Path:       "/test",
+				Method:     "GET",
+				Percentage: 50,
+			},
+		},
+	}
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Next handler should not be called")
+	})
+
+	middleware, err := abtest.NewABTest(next, config, "test-abtest")
+	if err != nil {
+		t.Fatalf("Failed to create AB test middleware: %v", err)
+	}
+
+	tests := []struct {
+		name           string
+		sessionID      string
+		expectedNewID  bool
+	}{
+		{"Malformed session ID", "invalid-session-id", true},
+		{"Empty session ID", "", true},
+		{"Very long session ID", strings.Repeat("a", 1000), true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, _ := http.NewRequest("GET", "/test", nil)
+			if tt.sessionID != "" {
+				req.Header.Set("Cookie", fmt.Sprintf("%s=%s", sessionCookieName, tt.sessionID))
+			}
+
+			rr := httptest.NewRecorder()
+			middleware.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Errorf("Expected status OK, got %v", rr.Code)
+			}
+
+			// Check if a new valid session ID was set
+			var newSessionID string
+			for _, cookie := range rr.Result().Cookies() {
+				if cookie.Name == sessionCookieName {
+					newSessionID = cookie.Value
+					break
+				}
+			}
+
+			if tt.expectedNewID {
+				if newSessionID == "" {
+					t.Error("Expected a new session ID to be set, but none was found")
+				}
+				if newSessionID == tt.sessionID {
+					t.Error("Expected a new valid session ID, but got an unchanged one")
+				}
+			} else {
+				if newSessionID != tt.sessionID {
+					t.Error("Expected session ID to remain unchanged, but it was changed")
+				}
+			}
+		})
+	}
+}
+
+func TestLargeNumberOfRulesAndConditions(t *testing.T) {
+	v1Server := abtest_testing.NewV1TestServer()
+	defer v1Server.Close()
+
+	v2Server := abtest_testing.NewV2TestServer()
+	defer v2Server.Close()
+
+	config := &abtest.Config{
+		V1Backend: v1Server.URL,
+		V2Backend: v2Server.URL,
+		Rules:     generateLargeNumberOfRules(1000),
+	}
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Next handler should not be called")
+	})
+
+	start := time.Now()
+	middleware, err := abtest.NewABTest(next, config, "test-abtest")
+	if err != nil {
+		t.Fatalf("Failed to create AB test middleware: %v", err)
+	}
+	creationTime := time.Since(start)
+
+	t.Logf("Time to create middleware with 1000 rules: %v", creationTime)
+
+	if creationTime > 1*time.Second {
+		t.Errorf("Creating middleware took too long: %v", creationTime)
+	}
+
+	start = time.Now()
+	for i := 0; i < 1000; i++ {
+		req, _ := http.NewRequest("GET", fmt.Sprintf("/test%d", i), nil)
+		rr := httptest.NewRecorder()
+		middleware.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected status OK, got %v", rr.Code)
+		}
+	}
+	processingTime := time.Since(start)
+
+	t.Logf("Time to process 1000 requests: %v", processingTime)
+
+	if processingTime > 1*time.Second {
+		t.Errorf("Processing 1000 requests took too long: %v", processingTime)
+	}
+}
+
+func TestLongAndComplexPathsAndQueryParameters(t *testing.T) {
+	v1Server := abtest_testing.NewV1TestServer()
+	defer v1Server.Close()
+
+	v2Server := abtest_testing.NewV2TestServer()
+	defer v2Server.Close()
+
+	config := &abtest.Config{
+		V1Backend: v1Server.URL,
+		V2Backend: v2Server.URL,
+		Rules: []abtest.RoutingRule{
+			{
+				PathPrefix: "/api/v1/users",
+				Method:     "GET",
+				Backend:    v2Server.URL,
+				Conditions: []abtest.RuleCondition{
+					{
+						Type:       "query",
+						QueryParam: "filter",
+						Operator:   "contains",
+						Value:      "active",
+					},
+				},
+			},
+		},
+	}
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Next handler should not be called")
+	})
+
+	middleware, err := abtest.NewABTest(next, config, "test-abtest")
+	if err != nil {
+		t.Fatalf("Failed to create AB test middleware: %v", err)
+	}
+
+	longPath := "/api/v1/users/" + strings.Repeat("subpath/", 50) + "profile"
+	longQueryParam := strings.Repeat("a", 2000) + "active" + strings.Repeat("a", 2000)
+
+	req, _ := http.NewRequest("GET", longPath+"?filter="+longQueryParam, nil)
+	rr := httptest.NewRecorder()
+	middleware.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status OK, got %v", rr.Code)
+	}
+
+	if !strings.Contains(rr.Body.String(), "V2 Backend") {
+		t.Errorf("Expected request to be routed to V2 Backend, but it wasn't")
+	}
+}
+
+func generateLargeNumberOfRules(count int) []abtest.RoutingRule {
+	rules := make([]abtest.RoutingRule, count)
+	for i := 0; i < count; i++ {
+		rules[i] = abtest.RoutingRule{
+			Path:   fmt.Sprintf("/test%d", i),
+			Method: "GET",
+			Conditions: []abtest.RuleCondition{
+				{
+					Type:      "header",
+					Parameter: fmt.Sprintf("X-Test-%d", i),
+					Operator:  "eq",
+					Value:     "true",
+				},
+			},
+		}
+	}
+	return rules
+}
+
 func TestEmptyAndInvalidConfigurations(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -424,6 +704,7 @@ func TestEmptyAndInvalidConfigurations(t *testing.T) {
 		})
 	}
 }
+
 
 func TestZeroAndHundredPercentRouting(t *testing.T) {
 	v1Server := abtest_testing.NewV1TestServer()
@@ -487,6 +768,9 @@ func TestZeroAndHundredPercentRouting(t *testing.T) {
 		})
 	}
 }
+
+// TestSpecialCharactersInURLsAndHeaders and TestErrorHandlingInBackendRequests
+// have been removed to avoid duplicate declarations
 
 func TestSelectBackend(t *testing.T) {
 	v1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
