@@ -1,7 +1,6 @@
 package abtest_test
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -99,10 +98,7 @@ func TestABTestMiddleware(t *testing.T) {
 		w.Write([]byte("Next handler"))
 	})
 
-	middleware, err := abtest.New(context.Background(), next, config, "test-abtest")
-	if err != nil {
-		t.Fatalf("Failed to create middleware: %v", err)
-	}
+	middleware := abtest.NewABTest(next, config, "test-abtest")
 
 	tests := []struct {
 		name           string
@@ -183,7 +179,7 @@ func TestGradualRollout(t *testing.T) {
 		w.Write([]byte("Next handler"))
 	})
 
-	middleware, _ := abtest.New(context.Background(), next, config, "test-abtest")
+	middleware := abtest.NewABTest(next, config, "test-abtest")
 
 	v1Count := 0
 	v2Count := 0
@@ -251,7 +247,7 @@ func TestSessionAffinity(t *testing.T) {
 		w.Write([]byte("Next handler"))
 	})
 
-	middleware, _ := abtest.New(context.Background(), next, config, "test-abtest")
+	middleware := abtest.NewABTest(next, config, "test-abtest")
 
 	// Simulate multiple requests from the same client
 	clientRequests := 10
@@ -326,7 +322,7 @@ func TestSessionAffinityExtended(t *testing.T) {
 		w.Write([]byte("Next handler"))
 	})
 
-	middleware, _ := abtest.New(context.Background(), next, config, "test-abtest")
+	middleware := abtest.NewABTest(next, config, "test-abtest")
 
 	// Simulate multiple requests from the same client
 	clientRequests := 10
@@ -410,10 +406,7 @@ func TestSelectBackend(t *testing.T) {
 		w.Write([]byte("Next handler"))
 	})
 
-	middleware, err := abtest.New(context.Background(), next, config, "test-abtest")
-	if err != nil {
-		t.Fatalf("Failed to create middleware: %v", err)
-	}
+	middleware := abtest.NewABTest(next, config, "test-abtest")
 
 	tests := []struct {
 		name            string

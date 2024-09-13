@@ -1,7 +1,6 @@
 package testing
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -44,34 +43,34 @@ func NewTestServerWithPathRewrite() *httptest.Server {
 // TestPathPrefixRewrite runs test cases for path prefix rewrites
 func TestPathPrefixRewrite(t *testing.T) {
 	testCases := []struct {
-		name           string
-		pathPrefix     string
-		requestPath    string
-		expectedPath   string
+		name         string
+		pathPrefix   string
+		requestPath  string
+		expectedPath string
 	}{
 		{
-			name:           "No prefix",
-			pathPrefix:     "",
-			requestPath:    "/api/v1/users",
-			expectedPath:   "/api/v1/users",
+			name:         "No prefix",
+			pathPrefix:   "",
+			requestPath:  "/api/v1/users",
+			expectedPath: "/api/v1/users",
 		},
 		{
-			name:           "Simple prefix",
-			pathPrefix:     "/api",
-			requestPath:    "/api/v1/users",
-			expectedPath:   "/v1/users",
+			name:         "Simple prefix",
+			pathPrefix:   "/api",
+			requestPath:  "/api/v1/users",
+			expectedPath: "/v1/users",
 		},
 		{
-			name:           "Nested prefix",
-			pathPrefix:     "/api/v1",
-			requestPath:    "/api/v1/users/123",
-			expectedPath:   "/users/123",
+			name:         "Nested prefix",
+			pathPrefix:   "/api/v1",
+			requestPath:  "/api/v1/users/123",
+			expectedPath: "/users/123",
 		},
 		{
-			name:           "Exact match prefix",
-			pathPrefix:     "/api/v1/users",
-			requestPath:    "/api/v1/users",
-			expectedPath:   "/",
+			name:         "Exact match prefix",
+			pathPrefix:   "/api/v1/users",
+			requestPath:  "/api/v1/users",
+			expectedPath: "/",
 		},
 	}
 
@@ -138,10 +137,7 @@ func TestABTestPathPrefixRewrite(t *testing.T) {
 	}
 
 	// Create ABTest middleware
-	abTestHandler, err := abtest.New(context.Background(), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}), config, "test")
-	if err != nil {
-		t.Fatalf("Failed to create ABTest middleware: %v", err)
-	}
+	abTestHandler := abtest.NewABTest(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}), config, "test")
 
 	// Create test server with ABTest middleware
 	testServer := httptest.NewServer(abTestHandler)

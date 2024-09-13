@@ -1,18 +1,25 @@
 package abtest
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/base64"
 	"hash/fnv"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/daemonp/traefik-forklift-middleware/abtest/config"
 )
+
+var debug = os.Getenv("DEBUG") == "true"
 
 const (
 	sessionCookieName    = "abtest_session_id"
@@ -21,31 +28,10 @@ const (
 	cacheCleanupInterval = 10 * time.Minute
 )
 
-// Config holds the configuration for the AB testing middleware
-type Config struct {
-	V1Backend string        `json:"v1Backend,omitempty"`
-	V2Backend string        `json:"v2Backend,omitempty"`
-	Rules     []RoutingRule `json:"rules,omitempty"`
-}
-
-// RoutingRule defines a rule for AB testing
-type RoutingRule struct {
-	Path       string          `json:"path,omitempty"`
-	PathPrefix string          `json:"pathPrefix,omitempty"`
-	Method     string          `json:"method,omitempty"`
-	Conditions []RuleCondition `json:"conditions,omitempty"`
-	Backend    string          `json:"backend,omitempty"`
-	Percentage float64         `json:"percentage,omitempty"`
-	Priority   int             `json:"priority,omitempty"`
-}
-
-// RuleCondition defines a condition for a routing rule
-type RuleCondition struct {
-	Type      string `json:"type,omitempty"`
-	Parameter string `json:"parameter,omitempty"`
-	Operator  string `json:"operator,omitempty"`
-	Value     string `json:"value,omitempty"`
-}
+// Use the Config type from the config package
+type Config = config.Config
+type RoutingRule = config.Rule
+type RuleCondition = config.RuleCondition
 
 // ABTest is the main struct for the AB testing middleware
 type ABTest struct {
@@ -95,6 +81,11 @@ func generateSessionID() (string, error) {
 
 // ServeHTTP implements the http.Handler interface
 func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+	if debug {
+		log.Printf("Received request: %s %s", req.Method, req.URL.Path)
+		log.Printf("Headers: %v", req.Header)
+	}
+
 	// Check for existing session cookie
 	var sessionID string
 	cookie, err := req.Cookie(sessionCookieName)
@@ -122,6 +113,36 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	} else {
 		sessionID = cookie.Value
+	}
+
+	if debug {
+		log.Printf("Session ID: %s", sessionID)
+	}
+
+	// Debug: Log POST payload
+	var body []byte
+	if req.Method == "POST" && req.Body != nil {
+		// Read the body
+		var err error
+		body, err = ioutil.ReadAll(req.Body)
+		if err != nil {
+			log.Printf("Error reading request body: %v", err)
+		} else {
+			if debug {
+				log.Printf("Request body: %s", string(body))
+			}
+			// Restore the body for further processing
+			req.Body = ioutil.NopCloser(bytes.NewBuffer(body))
+		}
+
+		// Parse the form
+		if err := req.ParseForm(); err != nil {
+			log.Printf("Error parsing form: %v", err)
+		} else if debug {
+			log.Printf("POST form data: %v", req.PostForm)
+		}
+	} else if req.Method == "POST" {
+		log.Printf("POST request with nil body")
 	}
 
 	backend := a.config.V1Backend
@@ -161,7 +182,11 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	} else {
 		backendURL = backend + backendPath
 	}
-	proxyReq, err := http.NewRequest(req.Method, backendURL, req.Body)
+	var proxyBody io.Reader
+	if req.Body != nil {
+		proxyBody = req.Body
+	}
+	proxyReq, err := http.NewRequest(req.Method, backendURL, proxyBody)
 	if err != nil {
 		log.Printf("Error creating proxy request: %v", err)
 		http.Error(rw, "Error creating proxy request", http.StatusInternalServerError)
@@ -176,6 +201,11 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	// Update the Host header to match the backend
 	proxyReq.Host = proxyReq.URL.Host
+
+	if debug {
+		log.Printf("Final request URL: %s", proxyReq.URL.String())
+		log.Printf("Final request headers: %v", proxyReq.Header)
+	}
 
 	// Send the request to the selected backend
 	client := &http.Client{}
@@ -197,6 +227,11 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	_, err = io.Copy(rw, resp.Body)
 	if err != nil {
 		log.Printf("Error copying response body: %v", err)
+	}
+
+	if debug {
+		log.Printf("Response status code: %d", resp.StatusCode)
+		log.Printf("Response headers: %v", resp.Header)
 	}
 }
 
@@ -241,11 +276,15 @@ func (re *RuleEngine) checkCondition(req *http.Request, condition RuleCondition)
 }
 
 func checkForm(req *http.Request, condition RuleCondition) bool {
-	if err := req.ParseForm(); err != nil {
-		return false
+	formValue := req.PostFormValue(condition.Parameter)
+	if debug {
+		log.Printf("Form parameter %s: %s", condition.Parameter, formValue)
 	}
-	formValue := req.Form.Get(condition.Parameter)
-	return compareValues(formValue, condition.Operator, condition.Value)
+	result := compareValues(formValue, condition.Operator, condition.Value)
+	if debug {
+		log.Printf("Form condition result: %v", result)
+	}
+	return result
 }
 
 func checkHeader(req *http.Request, condition RuleCondition) bool {
@@ -308,6 +347,8 @@ func (re *RuleEngine) shouldRouteToV2(sessionID string, percentage float64) bool
 
 	// Cache the decision
 	re.cache.Store(key, decision)
+
+	log.Printf("Routing decision for session %s: V%d", sessionID, map[bool]int{false: 1, true: 2}[decision])
 
 	return decision
 }
