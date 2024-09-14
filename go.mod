@@ -1,3 +1,3 @@
-module github.com/daemonp/traefik-forklift-middleware
+module github.com/daemonp/forklift
 
 go 1.23.0

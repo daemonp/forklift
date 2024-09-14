@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	forklift "github.com/daemonp/traefik-forklift-middleware"
+	"github.com/daemonp/forklift"
 )
 
 const sessionCookieName = "forklift_id"

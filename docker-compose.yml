@@ -14,17 +14,17 @@ services:
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--log.level=DEBUG"
-        #- "--experimental.Plugins.abtest.moduleName=github.com/daemonp/traefik-forklift-middleware"
+        #- "--experimental.Plugins.abtest.moduleName=github.com/daemonp/forklift"
         #- "--experimental.plugins.abtest.version=v0.1.6"
       #- "--experimental.plugins.example.modulename=github.com/traefik/plugindemo"
       #- "--experimental.plugins.example.version=v0.2.2"
-      - "--experimental.localPlugins.abtest.moduleName=github.com/daemonp/traefik-forklift-middleware"
+      - "--experimental.localPlugins.abtest.moduleName=github.com/daemonp/forklift"
     ports:
       - "80:80"
       - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./:/plugins-local/src/github.com/daemonp/traefik-forklift-middleware
+      - ./:/plugins-local/src/github.com/daemonp/forklift
     labels:
       - "traefik.enable=true"
 

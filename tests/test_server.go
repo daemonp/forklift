@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	forklift "github.com/daemonp/traefik-forklift-middleware"
+	"github.com/daemonp/forklift"
 )
 
 const (

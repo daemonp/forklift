@@ -22,8 +22,7 @@ This Traefik middleware plugin enables advanced A/B testing and traffic routing 
 
 1. Clone this repository:
     ```
-    git clone https://github.com/daemonp/traefik-forklift-middleware.git
-    cd traefik-forklift-middleware
+    git clone https://github.com/daemonp/forklift.git
     ```
 
 ## Configuration Options
@@ -64,13 +63,13 @@ services:
             - "--providers.docker=true"
             - "--providers.docker.exposedbydefault=false"
             - "--entrypoints.web.address=:80"
-            - "--experimental.localPlugins.abtest.moduleName=github.com/daemonp/traefik-forklift-middleware"
+            - "--experimental.localPlugins.abtest.moduleName=github.com/daemonp/forklift"
         ports:
             - "80:80"
             - "8080:8080"
         volumes:
             - /var/run/docker.sock:/var/run/docker.sock:ro
-            - ./:/plugins-local/src/github.com/daemonp/traefik-forklift-middleware
+            - ./:/plugins-local/src/github.com/daemonp/forklift
 
     echo1:
         image: hashicorp/http-echo
