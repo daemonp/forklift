@@ -249,10 +249,10 @@ func (a *Forklift) selectWeightedBackend(sessionID string, rules []*RoutingRule)
 	weights := make([]int, len(backends))
 	totalWeight := 0
 
-	// Calculate total weight and ensure weights are set
-	for i := range backends {
-		if weights[i] == 0 {
-			weights[i] = 1 // Assign a default weight if none is provided
+	// Parse weights from the rule
+	for i, backend := range backends {
+		if rule.Weight > 0 {
+			weights[i] = rule.Weight
 		}
 		totalWeight += weights[i]
 	}
