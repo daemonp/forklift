@@ -1,8 +1,11 @@
 version: '3'
 
+# https://github.com/traefik/traefik/issues/9512
+# There is an issue pulling the plugin in new versions
 services:
   traefik:
-    image: traefik:v2.10
+    image: traefik:v2.8.3
+    #image: traefik:v3.1.2
     environment:
       DEBUG: false
     command:
@@ -11,7 +14,11 @@ services:
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--log.level=DEBUG"
-      - "--experimental.localPlugins.abtest.moduleName=github.com/daemonp/traefik-forklift-middleware"
+      #- "--experimental.Plugins.abtest.moduleName=github.com/daemonp/traefik-forklift-middleware"
+      #- "--experimental.plugins.abtest.version=v0.1.6"
+      - "--experimental.plugins.example.modulename=github.com/traefik/plugindemo"
+      - "--experimental.plugins.example.version=v0.2.2"
+      #- "--experimental.localPlugins.abtest.moduleName=github.com/daemonp/traefik-forklift-middleware"
     ports:
       - "80:80"
       - "8080:8080"
