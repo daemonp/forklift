@@ -54,6 +54,7 @@ type RoutingRule struct {
 	Backend           string          `json:"backend,omitempty"`
 	Priority          int             `json:"priority,omitempty"`
 	PathPrefixRewrite string          `json:"pathPrefixRewrite,omitempty"`
+	Weight            int             `json:"weight,omitempty"`
 }
 
 // RuleCondition defines the structure for conditions in routing rules.
@@ -210,25 +211,36 @@ func (a *Forklift) selectBackend(req *http.Request) string {
 	hash.Write([]byte(sessionID))
 	hashValue := hash.Sum32()
 
+	var matchingRules []RoutingRule
+	var totalWeight int
+
 	for _, rule := range a.config.Rules {
 		if a.ruleEngine.ruleMatches(req, rule) {
 			if rule.Backend != "" {
-				// Implement 80/10/10 split
-				switch hashValue % 10 {
-				case 0, 1, 2, 3, 4, 5, 6, 7:
-					return a.config.DefaultBackend
-				case 8:
-					return rule.Backend
-				case 9:
-					// This assumes there's a third backend in the config
-					// You might need to adjust this based on your actual config structure
-					if len(a.config.Rules) > 1 {
-						return a.config.Rules[1].Backend
-					}
+				weight := rule.Weight
+				if weight <= 0 {
+					weight = 1
 				}
+				totalWeight += weight
+				matchingRules = append(matchingRules, rule)
 			}
 		}
 	}
+
+	if totalWeight > 0 {
+		randomValue := hashValue % uint32(totalWeight)
+		for _, rule := range matchingRules {
+			weight := rule.Weight
+			if weight <= 0 {
+				weight = 1
+			}
+			if randomValue < uint32(weight) {
+				return rule.Backend
+			}
+			randomValue -= uint32(weight)
+		}
+	}
+
 	return a.config.DefaultBackend
 }
 

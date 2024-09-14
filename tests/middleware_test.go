@@ -785,12 +785,20 @@ func TestThreeBackendsSplitRouting(t *testing.T) {
 			{
 				Path:    "/test",
 				Method:  "GET",
+				Backend: backend1.URL,
+				Weight:  80,
+			},
+			{
+				Path:    "/test",
+				Method:  "GET",
 				Backend: backend2.URL,
+				Weight:  10,
 			},
 			{
 				Path:    "/test",
 				Method:  "GET",
 				Backend: backend3.URL,
+				Weight:  10,
 			},
 		},
 	}
@@ -805,7 +813,7 @@ func TestThreeBackendsSplitRouting(t *testing.T) {
 	}
 
 	counts := make(map[string]int)
-	totalRequests := 1000
+	totalRequests := 10000
 
 	for i := 0; i < totalRequests; i++ {
 		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
@@ -826,7 +834,7 @@ func TestThreeBackendsSplitRouting(t *testing.T) {
 	for backend, count := range counts {
 		ratio := float64(count) / float64(totalRequests)
 		expectedRatio := expectedRatios[backend]
-		if math.Abs(ratio-expectedRatio) > 0.05 {
+		if math.Abs(ratio-expectedRatio) > 0.02 {
 			t.Errorf("Expected ratio for %s to be close to %.2f, but got %.2f", backend, expectedRatio, ratio)
 		}
 	}
