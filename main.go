@@ -246,14 +246,18 @@ func (a *Forklift) selectWeightedBackend(sessionID string, rules []*RoutingRule)
 
 	rule := rules[0]
 	backends := strings.Split(rule.Backend, ",")
-	weights := []int{rule.Weight}
+	weights := strings.Split(strconv.Itoa(rule.Weight), ",")
 
 	if len(backends) != len(weights) {
 		a.logger.Printf("Error: number of backends (%d) does not match number of weights (%d)", len(backends), len(weights))
 		return a.config.DefaultBackend
 	}
 
-	totalWeight := rule.Weight
+	totalWeight := 0
+	for _, w := range weights {
+		weight, _ := strconv.Atoi(w)
+		totalWeight += weight
+	}
 
 	// Use the session ID to deterministically select a backend
 	hash := fnv.New32a()
@@ -261,7 +265,8 @@ func (a *Forklift) selectWeightedBackend(sessionID string, rules []*RoutingRule)
 	randomValue := float64(hash.Sum32()) / float64(uint32(^uint32(0)))
 
 	cumulativeWeight := 0.0
-	for i, weight := range weights {
+	for i, w := range weights {
+		weight, _ := strconv.Atoi(w)
 		cumulativeWeight += float64(weight) / float64(totalWeight)
 		if randomValue < cumulativeWeight {
 			return backends[i]

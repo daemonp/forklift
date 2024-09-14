@@ -785,20 +785,8 @@ func TestThreeBackendsSplitRouting(t *testing.T) {
 			{
 				Path:    "/test",
 				Method:  "GET",
-				Backend: backend1.URL,
+				Backend: fmt.Sprintf("%s,%s,%s", backend1.URL, backend2.URL, backend3.URL),
 				Weight:  80,
-			},
-			{
-				Path:    "/test",
-				Method:  "GET",
-				Backend: backend2.URL,
-				Weight:  10,
-			},
-			{
-				Path:    "/test",
-				Method:  "GET",
-				Backend: backend3.URL,
-				Weight:  10,
 			},
 		},
 	}
