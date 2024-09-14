@@ -26,7 +26,7 @@ func TestIntegration(t *testing.T) {
 		body         string
 		expectedBody string
 	}{
-		{"Route to Default Backend", "/", "GET", "", "Hello from V1"},
+		{"Route to Default Backend", "/", "GET", "", "Hello from Default"},
 		{"Route to V2 Backend", "/", "POST", "MID=a", "Hello from V2"},
 		{"Route to V3 Backend", "/v3", "GET", "", "Hello from V3"},
 	}
