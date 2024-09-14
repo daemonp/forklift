@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"log"
 	"net/http"
@@ -217,23 +218,53 @@ func (a *Forklift) selectBackend(req *http.Request) string {
 		return a.config.DefaultBackend
 	}
 
-	var highestPriorityRule *RoutingRule
+	var matchingRules []*RoutingRule
 	highestPriority := -1
 
 	for i, rule := range a.config.Rules {
 		if a.ruleEngine.ruleMatches(req, rule) {
-			if rule.Priority > highestPriority || highestPriorityRule == nil {
+			if rule.Priority > highestPriority {
+				matchingRules = []*RoutingRule{&a.config.Rules[i]}
 				highestPriority = rule.Priority
-				highestPriorityRule = &a.config.Rules[i]
+			} else if rule.Priority == highestPriority {
+				matchingRules = append(matchingRules, &a.config.Rules[i])
 			}
 		}
 	}
 
-	if highestPriorityRule != nil && highestPriorityRule.Backend != "" {
-		return highestPriorityRule.Backend
+	if len(matchingRules) > 0 {
+		return a.selectWeightedBackend(sessionID, matchingRules)
 	}
 
 	return a.config.DefaultBackend
+}
+
+func (a *Forklift) selectWeightedBackend(sessionID string, rules []*RoutingRule) string {
+	totalWeight := 0
+	for _, rule := range rules {
+		totalWeight += rule.Weight
+	}
+
+	if totalWeight == 0 {
+		// If no weights are set, use the first rule
+		return rules[0].Backend
+	}
+
+	// Use the session ID to deterministically select a backend
+	hash := fnv.New32a()
+	hash.Write([]byte(sessionID))
+	randomValue := hash.Sum32() % uint32(totalWeight)
+
+	currentWeight := 0
+	for _, rule := range rules {
+		currentWeight += rule.Weight
+		if uint32(currentWeight) > randomValue {
+			return rule.Backend
+		}
+	}
+
+	// This should never happen, but return the last rule's backend just in case
+	return rules[len(rules)-1].Backend
 }
 
 func (a *Forklift) createProxyRequest(req *http.Request, backend string) (*http.Request, error) {
