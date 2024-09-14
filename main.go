@@ -174,7 +174,13 @@ func (a *Forklift) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	proxyReq, err := a.createProxyRequest(req, a.selectBackend(req))
+	backend := a.selectBackend(req)
+
+	if a.debug {
+		a.logger.Infof("Routing request to backend: %s", backend)
+	}
+
+	proxyReq, err := a.createProxyRequest(req, backend)
 	if err != nil {
 		a.logger.Printf("Error creating proxy request: %v", err)
 		http.Error(rw, "Error creating proxy request", http.StatusInternalServerError)
