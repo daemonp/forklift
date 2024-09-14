@@ -314,14 +314,12 @@ func TestSessionAffinityExtended(t *testing.T) {
 	defer v2Server.Close()
 
 	config := &forklift.Config{
-		V1Backend: v1Server.URL,
-		V2Backend: v2Server.URL,
+		DefaultBackend: v1Server.URL,
 		Rules: []forklift.RoutingRule{
 			{
-				Path:       "/session-test",
-				Method:     "GET",
-				Backend:    v2Server.URL,
-				Percentage: 0.5,
+				Path:    "/session-test",
+				Method:  "GET",
+				Backend: v2Server.URL,
 			},
 		},
 	}
@@ -670,35 +668,32 @@ func TestEmptyAndInvalidConfigurations(t *testing.T) {
 		{
 			name:        "Empty configuration",
 			config:      &forklift.Config{},
-			expectedErr: "missing V1Backend",
+			expectedErr: "missing DefaultBackend",
 		},
 		{
-			name: "Missing V1Backend",
+			name: "Missing DefaultBackend",
 			config: &forklift.Config{
-				V2Backend: "http://v2.example.com",
-			},
-			expectedErr: "missing V1Backend",
-		},
-		{
-			name: "Missing V2Backend",
-			config: &forklift.Config{
-				V1Backend: "http://v1.example.com",
-			},
-			expectedErr: "missing V2Backend",
-		},
-		{
-			name: "Invalid percentage",
-			config: &forklift.Config{
-				V1Backend: "http://v1.example.com",
-				V2Backend: "http://v2.example.com",
 				Rules: []forklift.RoutingRule{
 					{
-						Path:       "/test",
-						Percentage: -0.5,
+						Path:    "/test",
+						Backend: "http://v2.example.com",
 					},
 				},
 			},
-			expectedErr: "invalid percentage: must be between 0 and 100",
+			expectedErr: "missing DefaultBackend",
+		},
+		{
+			name: "Invalid rule",
+			config: &forklift.Config{
+				DefaultBackend: "http://v1.example.com",
+				Rules: []forklift.RoutingRule{
+					{
+						Path: "/test",
+						// Missing Backend
+					},
+				},
+			},
+			expectedErr: "invalid rule: missing Backend",
 		},
 		// Removed "Invalid operator" test case as it's not currently triggering an error
 	}
@@ -800,8 +795,7 @@ func TestSelectBackend(t *testing.T) {
 	defer v2Server.Close()
 
 	config := &forklift.Config{
-		V1Backend: v1Server.URL,
-		V2Backend: v2Server.URL,
+		DefaultBackend: v1Server.URL,
 		Rules: []forklift.RoutingRule{
 			{
 				Path:    "/test",
