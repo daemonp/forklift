@@ -141,3 +141,5 @@ services:
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[11].method=GET"
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[11].backend=http://echo7:5678"
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[11].weight=1"
+      - "traefik.http.routers.gradual.rule=PathPrefix(`/gradual`)"
+      - "traefik.http.routers.gradual.middlewares=abtest-middleware"
