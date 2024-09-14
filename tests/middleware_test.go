@@ -3,6 +3,7 @@ package tests
 import (
 	"encoding/base64"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
