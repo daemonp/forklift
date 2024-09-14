@@ -205,19 +205,30 @@ func (a *Forklift) handleSessionID(rw http.ResponseWriter, req *http.Request) st
 }
 
 func (a *Forklift) selectBackend(req *http.Request) string {
-	sessionID, _ := req.Cookie(sessionCookieName)
+	sessionID, err := req.Cookie(sessionCookieName)
+	if err != nil {
+		a.logger.Printf("Error getting session ID: %v", err)
+		return a.config.DefaultBackend
+	}
+
 	for _, rule := range a.config.Rules {
 		if a.ruleEngine.ruleMatches(req, rule) {
 			if rule.Backend != "" {
 				for _, condition := range rule.Conditions {
 					if condition.Type == "SessionID" {
-						threshold, _ := strconv.ParseFloat(condition.Value, 64)
-						if a.ruleEngine.shouldRouteToV2(sessionID.Value, threshold*100) {
+						threshold, err := strconv.ParseFloat(condition.Value, 64)
+						if err != nil {
+							a.logger.Printf("Error parsing threshold: %v", err)
+							continue
+						}
+						if a.ruleEngine.shouldRouteToV2(sessionID.Value, threshold) {
 							return rule.Backend
 						}
 					}
 				}
 			}
+			// If no SessionID condition matched, return the rule's backend
+			return rule.Backend
 		}
 	}
 	return a.config.DefaultBackend
@@ -422,8 +433,7 @@ func (re *RuleEngine) shouldRouteToV2(sessionID string, percentage float64) bool
 	}
 
 	// Always route to V2 if percentage is 100
-	const fullPercentage = 100.0
-	if percentage == fullPercentage {
+	if percentage == 100 {
 		return true
 	}
 
@@ -447,13 +457,13 @@ func (re *RuleEngine) shouldRouteToV2(sessionID string, percentage float64) bool
 	hashValue := h.Sum32()
 
 	// Use the hash to make a consistent decision
-	decision := float64(hashValue)/float64(^uint32(0)) < (percentage / fullPercentage)
+	decision := float64(hashValue)/float64(^uint32(0)) < (percentage / 100)
 
 	// Cache the decision
 	re.cache.Store(key, decision)
 
 	if re.config.Debug {
-		re.config.Logger.Infof("Routing decision for session %s: V%d", sessionID, map[bool]int{false: 1, true: v2Backend}[decision])
+		re.config.Logger.Infof("Routing decision for session %s: V%d (percentage: %.2f)", sessionID, map[bool]int{false: 1, true: v2Backend}[decision], percentage)
 	}
 
 	return decision
