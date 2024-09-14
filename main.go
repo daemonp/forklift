@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"io"
 	"log"
 	"net/http"
@@ -204,10 +205,27 @@ func (a *Forklift) handleSessionID(rw http.ResponseWriter, req *http.Request) st
 }
 
 func (a *Forklift) selectBackend(req *http.Request) string {
+	sessionID := getOrCreateSessionID(nil, req)
+	hash := fnv.New32a()
+	hash.Write([]byte(sessionID))
+	hashValue := hash.Sum32()
+
 	for _, rule := range a.config.Rules {
 		if a.ruleEngine.ruleMatches(req, rule) {
 			if rule.Backend != "" {
-				return rule.Backend
+				// Implement 80/10/10 split
+				switch hashValue % 10 {
+				case 0, 1, 2, 3, 4, 5, 6, 7:
+					return a.config.DefaultBackend
+				case 8:
+					return rule.Backend
+				case 9:
+					// This assumes there's a third backend in the config
+					// You might need to adjust this based on your actual config structure
+					if len(a.config.Rules) > 1 {
+						return a.config.Rules[1].Backend
+					}
+				}
 			}
 		}
 	}
