@@ -3,10 +3,13 @@ package integration
 import (
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"gonum.org/v1/gonum/stat/distuv"
 )
 
 const (
@@ -183,11 +186,20 @@ func TestGradualRolloutIntegration(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 
+	v1Percentage := float64(v1Count) / float64(totalRequests) * 100
 	v2Percentage := float64(v2Count) / float64(totalRequests) * 100
-	fmt.Printf("V1 count: %d, V2 count: %d\n", v1Count, v2Count)
-	fmt.Printf("V2 percentage: %.2f%%\n", v2Percentage)
-	if v2Percentage < 45 || v2Percentage > 55 {
-		t.Errorf("Gradual rollout distribution outside expected range: V2 percentage = %.2f%%", v2Percentage)
+	fmt.Printf("V1 count: %d (%.2f%%), V2 count: %d (%.2f%%)\n", v1Count, v1Percentage, v2Count, v2Percentage)
+
+	// Chi-square test for equal distribution
+	expected := float64(totalRequests) / 2
+	chiSquare := math.Pow(float64(v1Count)-expected, 2)/expected + math.Pow(float64(v2Count)-expected, 2)/expected
+	pValue := 1 - chi2.Cdf(chiSquare, 1)
+
+	fmt.Printf("Chi-square statistic: %.4f, p-value: %.4f\n", chiSquare, pValue)
+
+	// Use a significance level of 0.05
+	if pValue < 0.05 {
+		t.Errorf("Distribution is not equal (p-value = %.4f)", pValue)
 	}
 }
 
