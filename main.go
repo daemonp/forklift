@@ -242,23 +242,21 @@ func (a *Forklift) selectBackend(req *http.Request) string {
 func (a *Forklift) selectWeightedBackend(sessionID string, rules []*RoutingRule) string {
 	totalWeight := 0
 	for _, rule := range rules {
+		if rule.Weight == 0 {
+			rule.Weight = 1 // Default weight of 1 if not specified
+		}
 		totalWeight += rule.Weight
-	}
-
-	if totalWeight == 0 {
-		// If no weights are set, use the first rule
-		return rules[0].Backend
 	}
 
 	// Use the session ID to deterministically select a backend
 	hash := fnv.New32a()
 	hash.Write([]byte(sessionID))
-	randomValue := hash.Sum32() % uint32(totalWeight)
+	randomValue := int(hash.Sum32()) % totalWeight
 
 	currentWeight := 0
 	for _, rule := range rules {
 		currentWeight += rule.Weight
-		if uint32(currentWeight) > randomValue {
+		if randomValue < currentWeight {
 			return rule.Backend
 		}
 	}

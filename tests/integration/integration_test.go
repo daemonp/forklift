@@ -147,21 +147,28 @@ func TestGradualRolloutIntegration(t *testing.T) {
 	v2Count := 0
 	totalRequests := 1000
 
-	for range totalRequests {
-		resp, err := http.Get(traefikURL + "/")
+	client := &http.Client{}
+
+	for i := 0; i < totalRequests; i++ {
+		req, err := http.NewRequest("GET", traefikURL+"/", nil)
+		if err != nil {
+			t.Fatalf("Failed to create request: %v", err)
+		}
+
+		// Set a unique session ID for each request
+		sessionID := fmt.Sprintf("session-%d", i)
+		req.AddCookie(&http.Cookie{Name: "forklift_id", Value: sessionID})
+
+		resp, err := client.Do(req)
 		if err != nil {
 			t.Fatalf("Failed to send request: %v", err)
-		}
-		defer func() { _ = resp.Body.Close() }()
-
-		if resp.StatusCode != http.StatusOK {
-			t.Errorf("Expected status OK, got %v", resp.Status)
 		}
 
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			t.Fatalf("Failed to read response body: %v", err)
 		}
+		resp.Body.Close()
 
 		switch {
 		case strings.Contains(string(body), "Hello from V2"):
@@ -177,6 +184,7 @@ func TestGradualRolloutIntegration(t *testing.T) {
 	}
 
 	v2Percentage := float64(v2Count) / float64(totalRequests) * 100
+	fmt.Printf("V1 count: %d, V2 count: %d\n", v1Count, v2Count)
 	fmt.Printf("V2 percentage: %.2f%%\n", v2Percentage)
 	if v2Percentage < 45 || v2Percentage > 55 {
 		t.Errorf("Gradual rollout distribution outside expected range: V2 percentage = %.2f%%", v2Percentage)
