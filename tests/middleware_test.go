@@ -379,8 +379,7 @@ func TestMultipleRulesWithSamePath(t *testing.T) {
 	defer v2Server.Close()
 
 	config := &forklift.Config{
-		V1Backend: v1Server.URL,
-		V2Backend: v2Server.URL,
+		DefaultBackend: v1Server.URL,
 		Rules: []forklift.RoutingRule{
 			{
 				Path:     "/test",
@@ -546,9 +545,8 @@ func TestLargeNumberOfRulesAndConditions(t *testing.T) {
 	defer v2Server.Close()
 
 	config := &forklift.Config{
-		V1Backend: v1Server.URL,
-		V2Backend: v2Server.URL,
-		Rules:     generateLargeNumberOfRules(1000),
+		DefaultBackend: v1Server.URL,
+		Rules:          generateLargeNumberOfRules(1000, v2Server.URL),
 	}
 
 	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
@@ -639,12 +637,13 @@ func TestLongAndComplexPathsAndQueryParameters(t *testing.T) {
 	}
 }
 
-func generateLargeNumberOfRules(count int) []forklift.RoutingRule {
+func generateLargeNumberOfRules(count int, backendURL string) []forklift.RoutingRule {
 	rules := make([]forklift.RoutingRule, count)
 	for i := range count {
 		rules[i] = forklift.RoutingRule{
-			Path:   fmt.Sprintf("/test%d", i),
-			Method: "GET",
+			Path:    fmt.Sprintf("/test%d", i),
+			Method:  "GET",
+			Backend: backendURL,
 			Conditions: []forklift.RuleCondition{
 				{
 					Type:      "header",
@@ -719,17 +718,10 @@ func TestZeroAndHundredPercentRouting(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		percentage     float64
 		expectedServer string
 	}{
 		{
-			name:           "Zero percent routing",
-			percentage:     0,
-			expectedServer: "V2 Backend",
-		},
-		{
-			name:           "100 percent routing",
-			percentage:     1,
+			name:           "Routing to V2 Backend",
 			expectedServer: "V2 Backend",
 		},
 	}
