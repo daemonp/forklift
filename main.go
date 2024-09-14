@@ -207,6 +207,10 @@ func (a *Forklift) handleSessionID(rw http.ResponseWriter, req *http.Request) st
 
 func (a *Forklift) selectBackend(req *http.Request) string {
 	sessionID := getOrCreateSessionID(nil, req)
+	if sessionID == "" {
+		return a.config.DefaultBackend
+	}
+
 	hash := fnv.New32a()
 	hash.Write([]byte(sessionID))
 	hashValue := hash.Sum32()
@@ -464,6 +468,10 @@ func isValidSessionID(sessionID string) bool {
 
 // getOrCreateSessionID retrieves the existing session ID or creates a new one.
 func getOrCreateSessionID(rw http.ResponseWriter, req *http.Request) string {
+	if req == nil {
+		return ""
+	}
+
 	cookie, err := req.Cookie(sessionCookieName)
 	if err == nil && cookie.Value != "" && isValidSessionID(cookie.Value) {
 		return cookie.Value
@@ -475,15 +483,17 @@ func getOrCreateSessionID(rw http.ResponseWriter, req *http.Request) string {
 		return ""
 	}
 
-	http.SetCookie(rw, &http.Cookie{
-		Name:     sessionCookieName,
-		Value:    sessionID,
-		Path:     "/",
-		MaxAge:   sessionCookieMaxAge,
-		HttpOnly: true,
-		Secure:   req.TLS != nil,
-		SameSite: http.SameSiteStrictMode,
-	})
+	if rw != nil {
+		http.SetCookie(rw, &http.Cookie{
+			Name:     sessionCookieName,
+			Value:    sessionID,
+			Path:     "/",
+			MaxAge:   sessionCookieMaxAge,
+			HttpOnly: true,
+			Secure:   req.TLS != nil,
+			SameSite: http.SameSiteStrictMode,
+		})
+	}
 
 	return sessionID
 }
