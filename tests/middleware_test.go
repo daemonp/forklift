@@ -817,7 +817,7 @@ func TestThreeBackendsSplitRouting(t *testing.T) {
 
 	for i := 0; i < totalRequests; i++ {
 		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
-		
+
 		rr := httptest.NewRecorder()
 
 		middleware.ServeHTTP(rr, req)
