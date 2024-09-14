@@ -176,10 +176,16 @@ func TestGradualRolloutIntegration(t *testing.T) {
 		resp.Body.Close()
 
 		switch {
-		case strings.Contains(string(body), "Hello from V2"):
-			v2Count++
 		case strings.Contains(string(body), "Hello from V1"):
 			v1Count++
+		case strings.Contains(string(body), "Hello from V2"):
+			v2Count++
+		case strings.Contains(string(body), "Hello from V3"):
+			v3Count++
+		case strings.Contains(string(body), "Hello from V4"):
+			v4Count++
+		case strings.Contains(string(body), "Hello from V5"):
+			v5Count++
 		default:
 			t.Errorf("Unexpected response body: %s", string(body))
 		}
