@@ -229,7 +229,7 @@ func TestGradualRolloutIntegration(t *testing.T) {
 		math.Pow(float64(v6Count)-expected, 2)/expected +
 		math.Pow(float64(v7Count)-expected, 2)/expected
 
-	pValue := 1 - chi2.CDF(chiSquare, 6)
+	pValue := 1 - chi2.CDF(chiSquare)
 
 	fmt.Printf("Chi-square statistic: %.4f, p-value: %.4f\n", chiSquare, pValue)
 
