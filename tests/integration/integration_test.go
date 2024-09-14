@@ -25,6 +25,7 @@ func TestIntegration(t *testing.T) {
 		{"Route to V1 or V2 (second request)", "/", "GET", "", "Hello from V"},
 		{"Route to V2 (POST with MID=a)", "/", "POST", "MID=a", "Hello from V"},
 		{"Route to V1 (POST without MID)", "/", "POST", "", "Hello from V1"},
+		{"Route to V3", "/v3", "GET", "", "Hello from V3"},
 	}
 
 	client := &http.Client{}
@@ -179,5 +180,69 @@ func TestGradualRolloutIntegration(t *testing.T) {
 	fmt.Printf("V2 percentage: %.2f%%\n", v2Percentage)
 	if v2Percentage < 45 || v2Percentage > 55 {
 		t.Errorf("Gradual rollout distribution outside expected range: V2 percentage = %.2f%%", v2Percentage)
+	}
+}
+
+func TestThreeBackendDistribution(t *testing.T) {
+	v1Count := 0
+	v2Count := 0
+	v3Count := 0
+	totalRequests := 1000
+
+	for i := 0; i < totalRequests; i++ {
+		var resp *http.Response
+		var err error
+
+		if i%3 == 2 {
+			// Every third request goes to V3
+			resp, err = http.Get(traefikURL + "/v3")
+		} else {
+			// Other requests go to the default route (V1 or V2)
+			resp, err = http.Get(traefikURL + "/")
+		}
+
+		if err != nil {
+			t.Fatalf("Failed to send request: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("Expected status OK, got %v", resp.Status)
+		}
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			t.Fatalf("Failed to read response body: %v", err)
+		}
+
+		switch {
+		case strings.Contains(string(body), "Hello from V1"):
+			v1Count++
+		case strings.Contains(string(body), "Hello from V2"):
+			v2Count++
+		case strings.Contains(string(body), "Hello from V3"):
+			v3Count++
+		default:
+			t.Errorf("Unexpected response body: %s", string(body))
+		}
+
+		// Add a small delay to avoid overwhelming the server
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	v1Percentage := float64(v1Count) / float64(totalRequests) * 100
+	v2Percentage := float64(v2Count) / float64(totalRequests) * 100
+	v3Percentage := float64(v3Count) / float64(totalRequests) * 100
+
+	fmt.Printf("V1 percentage: %.2f%%\n", v1Percentage)
+	fmt.Printf("V2 percentage: %.2f%%\n", v2Percentage)
+	fmt.Printf("V3 percentage: %.2f%%\n", v3Percentage)
+
+	if v3Percentage < 30 || v3Percentage > 36 {
+		t.Errorf("V3 distribution outside expected range: %.2f%%", v3Percentage)
+	}
+
+	if v1Percentage+v2Percentage < 64 || v1Percentage+v2Percentage > 70 {
+		t.Errorf("V1+V2 distribution outside expected range: %.2f%%", v1Percentage+v2Percentage)
 	}
 }

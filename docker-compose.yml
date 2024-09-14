@@ -42,6 +42,13 @@ services:
       - "traefik.enable=true"
       - "traefik.http.services.echo2.loadbalancer.server.port=5678"
 
+  echo3:
+    image: hashicorp/http-echo
+    command: ["-text", "Hello from V3"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.echo3.loadbalancer.server.port=5678"
+
   abtest:
     image: traefik/whoami
     labels:
@@ -67,3 +74,6 @@ services:
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].conditions[0].operator=eq"
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].conditions[0].value=two"
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].backend=http://echo2:5678"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].path=/v3"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].method=GET"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].backend=http://echo3:5678"
