@@ -19,27 +19,6 @@ import (
 
 var debug = os.Getenv("DEBUG") == "true"
 
-type DefaultLogger struct{}
-
-var logger Logger = DefaultLogger{}
-
-type Logger interface {
-	Printf(format string, v ...interface{})
-	Infof(format string, v ...interface{})
-}
-
-func (l DefaultLogger) Printf(format string, v ...interface{}) {
-	fmt.Fprintf(os.Stdout, format+"\n", v...)
-}
-
-func (l DefaultLogger) Infof(format string, v ...interface{}) {
-	fmt.Fprintf(os.Stdout, "level=info msg=\""+format+"\"\n", v...)
-}
-
-func SetLogger(l Logger) {
-	logger = l
-}
-
 const (
 	sessionCookieName    = "abtest_session_id"
 	sessionCookieMaxAge  = 86400 * 30 // 30 days
@@ -437,4 +416,25 @@ func getOrCreateSessionID(rw http.ResponseWriter, req *http.Request) string {
 	})
 
 	return sessionID
+}
+
+// Traefik only accepts stdin/stdout
+var logger Logger = DefaultLogger{}
+
+type DefaultLogger struct{}
+type Logger interface {
+	Printf(format string, v ...interface{})
+	Infof(format string, v ...interface{})
+}
+
+func (l DefaultLogger) Printf(format string, v ...interface{}) {
+	fmt.Fprintf(os.Stdout, format+"\n", v...)
+}
+
+func (l DefaultLogger) Infof(format string, v ...interface{}) {
+	fmt.Fprintf(os.Stdout, "level=info msg=\""+format+"\"\n", v...)
+}
+
+func SetLogger(l Logger) {
+	logger = l
 }
