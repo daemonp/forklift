@@ -118,4 +118,4 @@ services:
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].path=/gradual"
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].method=GET"
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].backend=http://echo1:5678,http://echo2:5678,http://echo3:5678,http://echo4:5678,http://echo5:5678,http://echo6:5678,http://echo7:5678"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].weight=1,1,1,1,1,1,1"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].weight=1"
