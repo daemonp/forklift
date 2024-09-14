@@ -12,6 +12,8 @@ import (
 	"gonum.org/v1/gonum/stat/distuv"
 )
 
+var chi2 = distuv.ChiSquared{K: 1}
+
 const (
 	traefikURL = "http://localhost:80"
 )
