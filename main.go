@@ -205,10 +205,18 @@ func (a *Forklift) handleSessionID(rw http.ResponseWriter, req *http.Request) st
 }
 
 func (a *Forklift) selectBackend(req *http.Request) string {
+	sessionID, _ := req.Cookie(sessionCookieName)
 	for _, rule := range a.config.Rules {
 		if a.ruleEngine.ruleMatches(req, rule) {
 			if rule.Backend != "" {
-				return rule.Backend
+				for _, condition := range rule.Conditions {
+					if condition.Type == "SessionID" {
+						threshold, _ := strconv.ParseFloat(condition.Value, 64)
+						if a.ruleEngine.shouldRouteToV2(sessionID.Value, threshold*100) {
+							return rule.Backend
+						}
+					}
+				}
 			}
 		}
 	}

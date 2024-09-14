@@ -823,6 +823,11 @@ func TestThreeBackendsSplitRouting(t *testing.T) {
 
 	for i := 0; i < totalRequests; i++ {
 		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		
+		// Set a unique session ID for each request
+		sessionID := fmt.Sprintf("session-%d", i)
+		req.AddCookie(&http.Cookie{Name: "forklift_id", Value: sessionID})
+		
 		rr := httptest.NewRecorder()
 
 		middleware.ServeHTTP(rr, req)
