@@ -49,6 +49,34 @@ services:
       - "traefik.enable=true"
       - "traefik.http.services.echo3.loadbalancer.server.port=5678"
 
+  echo4:
+    image: hashicorp/http-echo
+    command: ["-text", "Hello from V4"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.echo4.loadbalancer.server.port=5678"
+
+  echo5:
+    image: hashicorp/http-echo
+    command: ["-text", "Hello from V5"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.echo5.loadbalancer.server.port=5678"
+
+  echo6:
+    image: hashicorp/http-echo
+    command: ["-text", "Hello from V6"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.echo6.loadbalancer.server.port=5678"
+
+  echo7:
+    image: hashicorp/http-echo
+    command: ["-text", "Hello from V7"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.echo7.loadbalancer.server.port=5678"
+
   abtest:
     image: traefik/whoami
     labels:
@@ -59,21 +87,29 @@ services:
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.defaultBackend=http://echo1:5678"
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].path=/"
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].method=GET"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].backend=http://echo2:5678"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].backend=http://echo1:5678"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].weight=1"
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].path=/"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].method=POST"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].conditions[0].type=form"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].conditions[0].parameter=MID"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].conditions[0].operator=eq"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].conditions[0].value=a"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].method=GET"
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].backend=http://echo2:5678"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].path=/query-test"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].weight=1"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].path=/"
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].method=GET"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].conditions[0].type=query"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].conditions[0].queryParam=mid"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].conditions[0].operator=eq"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].conditions[0].value=two"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].backend=http://echo2:5678"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].path=/v3"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].backend=http://echo3:5678"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].weight=1"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].path=/"
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].method=GET"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].backend=http://echo3:5678"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].backend=http://echo4:5678"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].weight=1"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].path=/"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].method=GET"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].backend=http://echo5:5678"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].weight=1"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].path=/"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].method=GET"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].backend=http://echo6:5678"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].weight=1"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[6].path=/"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[6].method=GET"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[6].backend=http://echo7:5678"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[6].weight=1"
