@@ -18,13 +18,13 @@ const sessionCookieName = "forklift_id"
 
 func TestForkliftMiddleware(t *testing.T) {
 	// Create mock servers using the new testing package
-	v1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	v1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("V1 Backend"))
 	}))
 	defer v1Server.Close()
 
-	v2Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	v2Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("V2 Backend"))
 	}))
@@ -96,7 +96,7 @@ func TestForkliftMiddleware(t *testing.T) {
 		},
 	}
 
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("Next handler"))
 	})
@@ -180,7 +180,7 @@ func TestGradualRollout(t *testing.T) {
 		},
 	}
 
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("Next handler"))
 	})
@@ -199,8 +199,8 @@ func TestGradualRollout(t *testing.T) {
 		t.Logf("Starting gradual rollout test with %d requests", totalRequests)
 	}
 
-	for i := 0; i < totalRequests; i++ {
-		req, _ := http.NewRequest("GET", "/gradual-rollout", nil)
+	for i := range totalRequests {
+		req, _ := http.NewRequest(http.MethodGet, "/gradual-rollout", nil)
 		req.RemoteAddr = fmt.Sprintf("192.0.2.%d:1234", i%256)          // Use different IP addresses
 		req.Header.Set("User-Agent", fmt.Sprintf("TestAgent-%d", i%10)) // Use different User-Agents
 		rr := httptest.NewRecorder()
@@ -251,7 +251,7 @@ func TestSessionAffinity(t *testing.T) {
 		},
 	}
 
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, err := w.Write([]byte("Next handler"))
 		if err != nil {
@@ -269,8 +269,8 @@ func TestSessionAffinity(t *testing.T) {
 	var sessionID string
 	var firstResponse string
 
-	for i := 0; i < clientRequests; i++ {
-		req, _ := http.NewRequest("GET", "/session-test", nil)
+	for i := range clientRequests {
+		req, _ := http.NewRequest(http.MethodGet, "/session-test", nil)
 		if sessionID != "" {
 			req.Header.Set("Cookie", "forklift_id="+sessionID)
 		}
@@ -332,7 +332,7 @@ func TestSessionAffinityExtended(t *testing.T) {
 		},
 	}
 
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, err := w.Write([]byte("Next handler"))
 		if err != nil {
@@ -350,8 +350,8 @@ func TestSessionAffinityExtended(t *testing.T) {
 	var sessionID string
 	var firstResponse string
 
-	for i := 0; i < clientRequests; i++ {
-		req, _ := http.NewRequest("GET", "/session-test", nil)
+	for i := range clientRequests {
+		req, _ := http.NewRequest(http.MethodGet, "/session-test", nil)
 		if sessionID != "" {
 			req.Header.Set("Cookie", "session_id="+sessionID)
 		}
@@ -413,7 +413,7 @@ func TestMultipleRulesWithSamePath(t *testing.T) {
 		},
 	}
 
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Error("Next handler should not be called")
 	})
 
@@ -441,7 +441,7 @@ func TestMultipleRulesWithSamePath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, _ := http.NewRequest("GET", "/test", nil)
+			req, _ := http.NewRequest(http.MethodGet, "/test", nil)
 			for k, v := range tt.headers {
 				req.Header.Set(k, v)
 			}
@@ -475,7 +475,7 @@ func TestInvalidSessionIDs(t *testing.T) {
 		},
 	}
 
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Error("Next handler should not be called")
 	})
 
@@ -496,44 +496,54 @@ func TestInvalidSessionIDs(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req, _ := http.NewRequest("GET", "/test", nil)
-			if tt.sessionID != "" {
-				req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: tt.sessionID})
-			}
-
-			rr := httptest.NewRecorder()
-			middleware.ServeHTTP(rr, req)
-
-			if rr.Code != http.StatusOK {
-				t.Errorf("Expected status OK, got %v", rr.Code)
-			}
-
-			// Check if a new valid session ID was set
-			var newSessionID string
-			for _, cookie := range rr.Result().Cookies() {
-				if cookie.Name == sessionCookieName {
-					newSessionID = cookie.Value
-					break
-				}
-			}
-
-			if tt.expectedNewID {
-				if newSessionID == "" {
-					t.Error("Expected a new session ID to be set, but none was found")
-				} else if newSessionID == tt.sessionID {
-					t.Error("Expected a new valid session ID, but got an unchanged one")
-				} else {
-					// Validate the new session ID format (base64 encoded)
-					if _, err := base64.URLEncoding.DecodeString(newSessionID); err != nil {
-						t.Errorf("New session ID is not a valid base64 encoded string: %v", err)
-					}
-				}
-			} else {
-				if newSessionID != "" && newSessionID != tt.sessionID {
-					t.Error("Expected session ID to remain unchanged, but it was changed")
-				}
-			}
+			testInvalidSessionID(t, middleware, tt.sessionID, tt.expectedNewID)
 		})
+	}
+}
+
+func testInvalidSessionID(t *testing.T, middleware *forklift.Forklift, sessionID string, expectedNewID bool) {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+	if sessionID != "" {
+		req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: sessionID})
+	}
+
+	rr := httptest.NewRecorder()
+	middleware.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("Expected status OK, got %v", rr.Code)
+	}
+
+	newSessionID := getNewSessionID(rr)
+	validateSessionID(t, sessionID, newSessionID, expectedNewID)
+}
+
+func getNewSessionID(rr *httptest.ResponseRecorder) string {
+	for _, cookie := range rr.Result().Cookies() {
+		if cookie.Name == sessionCookieName {
+			return cookie.Value
+		}
+	}
+	return ""
+}
+
+func validateSessionID(t *testing.T, oldSessionID, newSessionID string, expectedNewID bool) {
+	t.Helper()
+	if expectedNewID {
+		switch {
+		case newSessionID == "":
+			t.Error("Expected a new session ID to be set, but none was found")
+		case newSessionID == oldSessionID:
+			t.Error("Expected a new valid session ID, but got an unchanged one")
+		default:
+			// Validate the new session ID format (base64 encoded)
+			if _, err := base64.URLEncoding.DecodeString(newSessionID); err != nil {
+				t.Errorf("New session ID is not a valid base64 encoded string: %v", err)
+			}
+		}
+	} else if newSessionID != "" && newSessionID != oldSessionID {
+		t.Error("Expected session ID to remain unchanged, but it was changed")
 	}
 }
 
@@ -550,7 +560,7 @@ func TestLargeNumberOfRulesAndConditions(t *testing.T) {
 		Rules:     generateLargeNumberOfRules(1000),
 	}
 
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Error("Next handler should not be called")
 	})
 
@@ -568,8 +578,8 @@ func TestLargeNumberOfRulesAndConditions(t *testing.T) {
 	}
 
 	start = time.Now()
-	for i := 0; i < 1000; i++ {
-		req, _ := http.NewRequest("GET", fmt.Sprintf("/test%d", i), nil)
+	for i := range 1000 {
+		req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/test%d", i), nil)
 		rr := httptest.NewRecorder()
 		middleware.ServeHTTP(rr, req)
 
@@ -613,7 +623,7 @@ func TestLongAndComplexPathsAndQueryParameters(t *testing.T) {
 		},
 	}
 
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 		t.Error("Next handler should not be called")
 	})
 
@@ -625,7 +635,7 @@ func TestLongAndComplexPathsAndQueryParameters(t *testing.T) {
 	longPath := "/api/v1/users/" + strings.Repeat("subpath/", 50) + "profile"
 	longQueryParam := strings.Repeat("a", 2000) + "active" + strings.Repeat("a", 2000)
 
-	req, _ := http.NewRequest("GET", longPath+"?filter="+longQueryParam, nil)
+	req, _ := http.NewRequest(http.MethodGet, longPath+"?filter="+longQueryParam, nil)
 	rr := httptest.NewRecorder()
 	middleware.ServeHTTP(rr, req)
 
@@ -640,7 +650,7 @@ func TestLongAndComplexPathsAndQueryParameters(t *testing.T) {
 
 func generateLargeNumberOfRules(count int) []forklift.RoutingRule {
 	rules := make([]forklift.RoutingRule, count)
-	for i := 0; i < count; i++ {
+	for i := range count {
 		rules[i] = forklift.RoutingRule{
 			Path:   fmt.Sprintf("/test%d", i),
 			Method: "GET",
@@ -701,7 +711,7 @@ func TestEmptyAndInvalidConfigurations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+			next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {})
 			_, err := forklift.NewForklift(next, tt.config, "test-forklift")
 			if err == nil {
 				t.Errorf("Expected an error, but didn't get one")
@@ -751,7 +761,7 @@ func TestZeroAndHundredPercentRouting(t *testing.T) {
 				},
 			}
 
-			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
 				t.Error("Next handler should not be called")
 			})
 
@@ -760,11 +770,11 @@ func TestZeroAndHundredPercentRouting(t *testing.T) {
 				t.Fatalf("Failed to create Forklift test middleware: %v", err)
 			}
 
-			req, _ := http.NewRequest("GET", "/test", nil)
+			req, _ := http.NewRequest(http.MethodGet, "/test", nil)
 			rr := httptest.NewRecorder()
 
 			// Make multiple requests to ensure consistent routing
-			for i := 0; i < 100; i++ {
+			for range 100 {
 				middleware.ServeHTTP(rr, req)
 				if !strings.Contains(rr.Body.String(), tt.expectedServer) {
 					t.Errorf("Expected %s, got %s", tt.expectedServer, rr.Body.String())
@@ -846,7 +856,7 @@ func TestSelectBackend(t *testing.T) {
 		},
 	}
 
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, err := w.Write([]byte("Next handler"))
 		if err != nil {

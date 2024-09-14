@@ -32,63 +32,112 @@ func TestIntegration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var req *http.Request
-			var err error
-			if tt.method == "POST" {
-				req, err = http.NewRequest(tt.method, traefikURL+tt.path, strings.NewReader(tt.body))
-				req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-			} else {
-				req, err = http.NewRequest(tt.method, traefikURL+tt.path, nil)
-			}
-			if err != nil {
-				t.Fatalf("Failed to create request: %v", err)
-			}
-
-			if sessionID != "" {
-				req.AddCookie(&http.Cookie{Name: "abtest_session_id", Value: sessionID})
-			}
-
-			resp, err := client.Do(req)
-			if err != nil {
-				t.Fatalf("Failed to send request: %v", err)
-			}
-			defer resp.Body.Close()
-
-			if resp.StatusCode != http.StatusOK {
-				t.Errorf("Expected status OK, got %v", resp.Status)
-			}
-
-			body, err := io.ReadAll(resp.Body)
-			if err != nil {
-				t.Fatalf("Failed to read response body: %v", err)
-			}
-
-			if !strings.Contains(string(body), tt.expectedBody) {
-				t.Errorf("Expected body to contain %q, got %q", tt.expectedBody, string(body))
-			}
-
-			t.Logf("Test: %s", tt.name)
-			t.Logf("Request method: %s", tt.method)
-			t.Logf("Request body: %s", tt.body)
-			t.Logf("Response body: %s", string(body))
-			t.Logf("Selected backend: %s", resp.Header.Get("X-Selected-Backend"))
-
-			if tt.method == "POST" && tt.body == "MID=a" {
-				if !strings.Contains(string(body), "Hello from V") {
-					t.Errorf("Expected response from a backend for POST with MID=a, got: %s", string(body))
-				}
-			}
-
-			if sessionID == "" {
-				for _, cookie := range resp.Cookies() {
-					if cookie.Name == "abtest_session_id" {
-						sessionID = cookie.Value
-						t.Logf("Session ID: %s", sessionID)
-						break
-					}
-				}
-			}
+			runTest(t, client, &sessionID, tt)
 		})
+	}
+}
+
+func runTest(t *testing.T, client *http.Client, sessionID *string, tt struct {
+	name         string
+	path         string
+	method       string
+	body         string
+	expectedBody string
+},
+) {
+	t.Helper()
+	req, err := createRequest(tt.method, traefikURL+tt.path, tt.body, *sessionID)
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Failed to send request: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	checkResponse(t, resp, tt)
+	logTestDetails(t, tt, resp)
+	updateSessionID(t, resp, sessionID)
+}
+
+func createRequest(method, url, body, sessionID string) (*http.Request, error) {
+	var req *http.Request
+	var err error
+	if method == "POST" {
+		req, err = http.NewRequest(method, url, strings.NewReader(body))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		}
+	} else {
+		req, err = http.NewRequest(method, url, nil)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if sessionID != "" {
+		req.AddCookie(&http.Cookie{Name: "forklift_id", Value: sessionID})
+	}
+	return req, nil
+}
+
+func checkResponse(t *testing.T, resp *http.Response, tt struct {
+	name         string
+	path         string
+	method       string
+	body         string
+	expectedBody string
+},
+) {
+	t.Helper()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status OK, got %v", resp.Status)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("Failed to read response body: %v", err)
+	}
+
+	if !strings.Contains(string(body), tt.expectedBody) {
+		t.Errorf("Expected body to contain %q, got %q", tt.expectedBody, string(body))
+	}
+
+	if tt.method == "POST" && tt.body == "MID=a" {
+		if !strings.Contains(string(body), "Hello from V") {
+			t.Errorf("Expected response from a backend for POST with MID=a, got: %s", string(body))
+		}
+	}
+}
+
+func logTestDetails(t *testing.T, tt struct {
+	name         string
+	path         string
+	method       string
+	body         string
+	expectedBody string
+}, resp *http.Response,
+) {
+	t.Helper()
+	t.Logf("Test: %s", tt.name)
+	t.Logf("Request method: %s", tt.method)
+	t.Logf("Request body: %s", tt.body)
+	body, _ := io.ReadAll(resp.Body)
+	t.Logf("Response body: %s", string(body))
+	t.Logf("Selected backend: %s", resp.Header.Get("X-Selected-Backend"))
+}
+
+func updateSessionID(t *testing.T, resp *http.Response, sessionID *string) {
+	t.Helper()
+	if *sessionID == "" {
+		for _, cookie := range resp.Cookies() {
+			if cookie.Name == "forklift_id" {
+				*sessionID = cookie.Value
+				t.Logf("Session ID: %s", *sessionID)
+				break
+			}
+		}
 	}
 }
 
@@ -97,12 +146,12 @@ func TestGradualRolloutIntegration(t *testing.T) {
 	v2Count := 0
 	totalRequests := 1000
 
-	for i := 0; i < totalRequests; i++ {
+	for range totalRequests {
 		resp, err := http.Get(traefikURL + "/")
 		if err != nil {
 			t.Fatalf("Failed to send request: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("Expected status OK, got %v", resp.Status)
@@ -113,11 +162,12 @@ func TestGradualRolloutIntegration(t *testing.T) {
 			t.Fatalf("Failed to read response body: %v", err)
 		}
 
-		if strings.Contains(string(body), "Hello from V2") {
+		switch {
+		case strings.Contains(string(body), "Hello from V2"):
 			v2Count++
-		} else if strings.Contains(string(body), "Hello from V1") {
+		case strings.Contains(string(body), "Hello from V1"):
 			v1Count++
-		} else {
+		default:
 			t.Errorf("Unexpected response body: %s", string(body))
 		}
 
