@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	forklift "github.com/daemonp/traefik-forklift-middleware"
 )
 
 // NewTestServer creates a new test server with the given handler
@@ -106,8 +108,8 @@ func TestPathPrefixRewrite(t *testing.T) {
 	}
 }
 
-// TestABTestPathPrefixRewrite tests the path prefix rewrite functionality in the ABTest middleware
-func TestABTestPathPrefixRewrite(t *testing.T) {
+// TestForkliftPathPrefixRewrite tests the path prefix rewrite functionality in the Forklift middleware
+func TestForkliftPathPrefixRewrite(t *testing.T) {
 	// Create test servers for V1 and V2 backends
 	v1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -121,11 +123,11 @@ func TestABTestPathPrefixRewrite(t *testing.T) {
 	}))
 	defer v2Server.Close()
 
-	// Create ABTest configuration
-	config := &abtest.Config{
+	// Create Forklift configuration
+	config := &forklift.Config{
 		V1Backend: v1Server.URL,
 		V2Backend: v2Server.URL,
-		Rules: []abtest.RoutingRule{
+		Rules: []forklift.RoutingRule{
 			{
 				PathPrefix: "/api",
 				Backend:    v2Server.URL,
@@ -134,14 +136,14 @@ func TestABTestPathPrefixRewrite(t *testing.T) {
 		},
 	}
 
-	// Create ABTest middleware
-	abTestHandler, err := abtest.NewABTest(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}), config, "test")
+	// Create Forklift middleware
+	forkliftHandler, err := forklift.NewForklift(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}), config, "test")
 	if err != nil {
-		t.Fatalf("Failed to create ABTest middleware: %v", err)
+		t.Fatalf("Failed to create Forklift middleware: %v", err)
 	}
 
-	// Create test server with ABTest middleware
-	testServer := httptest.NewServer(abTestHandler)
+	// Create test server with Forklift middleware
+	testServer := httptest.NewServer(forkliftHandler)
 	defer testServer.Close()
 
 	// Test cases

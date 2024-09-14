@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,11 +10,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	forklift "github.com/daemonp/traefik-forklift-middleware"
 )
 
-const sessionCookieName = "abtest_session_id"
+const sessionCookieName = "forklift_id"
 
-func TestABTestMiddleware(t *testing.T) {
+func TestForkliftMiddleware(t *testing.T) {
 	// Create mock servers using the new testing package
 	v1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -27,10 +30,10 @@ func TestABTestMiddleware(t *testing.T) {
 	}))
 	defer v2Server.Close()
 
-	config := &abtest.Config{
+	config := &forklift.Config{
 		V1Backend: v1Server.URL,
 		V2Backend: v2Server.URL,
-		Rules: []abtest.RoutingRule{
+		Rules: []forklift.RoutingRule{
 			{
 				Path:     "/test",
 				Method:   "GET",
@@ -48,7 +51,7 @@ func TestABTestMiddleware(t *testing.T) {
 				Method:   "POST",
 				Backend:  v2Server.URL,
 				Priority: 3,
-				Conditions: []abtest.RuleCondition{
+				Conditions: []forklift.RuleCondition{
 					{
 						Type:      "form",
 						Parameter: "amount",
@@ -62,7 +65,7 @@ func TestABTestMiddleware(t *testing.T) {
 				Method:   "GET",
 				Backend:  v2Server.URL,
 				Priority: 4,
-				Conditions: []abtest.RuleCondition{
+				Conditions: []forklift.RuleCondition{
 					{
 						Type:      "header",
 						Parameter: "Accept-Language",
@@ -98,9 +101,9 @@ func TestABTestMiddleware(t *testing.T) {
 		_, _ = w.Write([]byte("Next handler"))
 	})
 
-	middleware, err := abtest.NewABTest(next, config, "test-abtest")
+	middleware, err := forklift.NewForklift(next, config, "test-forklift")
 	if err != nil {
-		t.Fatalf("Failed to create AB test middleware: %v", err)
+		t.Fatalf("Failed to create Forklift test middleware: %v", err)
 	}
 
 	tests := []struct {
@@ -164,10 +167,10 @@ func TestGradualRollout(t *testing.T) {
 	v2Server := NewV2TestServer()
 	defer v2Server.Close()
 
-	config := &abtest.Config{
+	config := &forklift.Config{
 		V1Backend: v1Server.URL,
 		V2Backend: v2Server.URL,
-		Rules: []abtest.RoutingRule{
+		Rules: []forklift.RoutingRule{
 			{
 				Path:       "/gradual-rollout",
 				Method:     "GET",
@@ -182,9 +185,9 @@ func TestGradualRollout(t *testing.T) {
 		_, _ = w.Write([]byte("Next handler"))
 	})
 
-	middleware, err := abtest.NewABTest(next, config, "test-abtest")
+	middleware, err := forklift.NewForklift(next, config, "test-forklift")
 	if err != nil {
-		t.Fatalf("Failed to create AB test middleware: %v", err)
+		t.Fatalf("Failed to create Forklift test middleware: %v", err)
 	}
 
 	v1Count := 0
@@ -229,16 +232,16 @@ func TestGradualRollout(t *testing.T) {
 }
 
 func TestSessionAffinity(t *testing.T) {
-	v1Server := abtest_testing.NewV1TestServer()
+	v1Server := NewV1TestServer()
 	defer v1Server.Close()
 
-	v2Server := abtest_testing.NewV2TestServer()
+	v2Server := NewV2TestServer()
 	defer v2Server.Close()
 
-	config := &abtest.Config{
+	config := &forklift.Config{
 		V1Backend: v1Server.URL,
 		V2Backend: v2Server.URL,
-		Rules: []abtest.RoutingRule{
+		Rules: []forklift.RoutingRule{
 			{
 				Path:       "/session-test",
 				Method:     "GET",
@@ -256,9 +259,9 @@ func TestSessionAffinity(t *testing.T) {
 		}
 	})
 
-	middleware, err := abtest.NewABTest(next, config, "test-abtest")
+	middleware, err := forklift.NewForklift(next, config, "test-forklift")
 	if err != nil {
-		t.Fatalf("Failed to create AB test middleware: %v", err)
+		t.Fatalf("Failed to create Forklift test middleware: %v", err)
 	}
 
 	// Simulate multiple requests from the same client
@@ -269,7 +272,7 @@ func TestSessionAffinity(t *testing.T) {
 	for i := 0; i < clientRequests; i++ {
 		req, _ := http.NewRequest("GET", "/session-test", nil)
 		if sessionID != "" {
-			req.Header.Set("Cookie", "abtest_session_id="+sessionID)
+			req.Header.Set("Cookie", "forklift_id="+sessionID)
 		}
 
 		rr := httptest.NewRecorder()
@@ -277,7 +280,7 @@ func TestSessionAffinity(t *testing.T) {
 
 		// Extract session ID from the response
 		for _, cookie := range rr.Result().Cookies() {
-			if cookie.Name == "abtest_session_id" {
+			if cookie.Name == "forklift_id" {
 				sessionID = cookie.Value
 				break
 			}
@@ -310,16 +313,16 @@ func TestSessionAffinity(t *testing.T) {
 }
 
 func TestSessionAffinityExtended(t *testing.T) {
-	v1Server := abtest_testing.NewV1TestServer()
+	v1Server := NewV1TestServer()
 	defer v1Server.Close()
 
-	v2Server := abtest_testing.NewV2TestServer()
+	v2Server := NewV2TestServer()
 	defer v2Server.Close()
 
-	config := &abtest.Config{
+	config := &forklift.Config{
 		V1Backend: v1Server.URL,
 		V2Backend: v2Server.URL,
-		Rules: []abtest.RoutingRule{
+		Rules: []forklift.RoutingRule{
 			{
 				Path:       "/session-test",
 				Method:     "GET",
@@ -337,9 +340,9 @@ func TestSessionAffinityExtended(t *testing.T) {
 		}
 	})
 
-	middleware, err := abtest.NewABTest(next, config, "test-abtest")
+	middleware, err := forklift.NewForklift(next, config, "test-forklift")
 	if err != nil {
-		t.Fatalf("Failed to create AB test middleware: %v", err)
+		t.Fatalf("Failed to create Forklift test middleware: %v", err)
 	}
 
 	// Simulate multiple requests from the same client
@@ -377,16 +380,16 @@ func TestSessionAffinityExtended(t *testing.T) {
 }
 
 func TestMultipleRulesWithSamePath(t *testing.T) {
-	v1Server := abtest_testing.NewV1TestServer()
+	v1Server := NewV1TestServer()
 	defer v1Server.Close()
 
-	v2Server := abtest_testing.NewV2TestServer()
+	v2Server := NewV2TestServer()
 	defer v2Server.Close()
 
-	config := &abtest.Config{
+	config := &forklift.Config{
 		V1Backend: v1Server.URL,
 		V2Backend: v2Server.URL,
-		Rules: []abtest.RoutingRule{
+		Rules: []forklift.RoutingRule{
 			{
 				Path:     "/test",
 				Method:   "GET",
@@ -398,7 +401,7 @@ func TestMultipleRulesWithSamePath(t *testing.T) {
 				Method:   "GET",
 				Backend:  v2Server.URL,
 				Priority: 2,
-				Conditions: []abtest.RuleCondition{
+				Conditions: []forklift.RuleCondition{
 					{
 						Type:      "header",
 						Parameter: "X-Test",
@@ -414,9 +417,9 @@ func TestMultipleRulesWithSamePath(t *testing.T) {
 		t.Error("Next handler should not be called")
 	})
 
-	middleware, err := abtest.NewABTest(next, config, "test-abtest")
+	middleware, err := forklift.NewForklift(next, config, "test-forklift")
 	if err != nil {
-		t.Fatalf("Failed to create AB test middleware: %v", err)
+		t.Fatalf("Failed to create Forklift test middleware: %v", err)
 	}
 
 	tests := []struct {
@@ -454,16 +457,16 @@ func TestMultipleRulesWithSamePath(t *testing.T) {
 }
 
 func TestInvalidSessionIDs(t *testing.T) {
-	v1Server := abtest_testing.NewV1TestServer()
+	v1Server := NewV1TestServer()
 	defer v1Server.Close()
 
-	v2Server := abtest_testing.NewV2TestServer()
+	v2Server := NewV2TestServer()
 	defer v2Server.Close()
 
-	config := &abtest.Config{
+	config := &forklift.Config{
 		V1Backend: v1Server.URL,
 		V2Backend: v2Server.URL,
-		Rules: []abtest.RoutingRule{
+		Rules: []forklift.RoutingRule{
 			{
 				Path:       "/test",
 				Method:     "GET",
@@ -476,9 +479,9 @@ func TestInvalidSessionIDs(t *testing.T) {
 		t.Error("Next handler should not be called")
 	})
 
-	middleware, err := abtest.NewABTest(next, config, "test-abtest")
+	middleware, err := forklift.NewForklift(next, config, "test-forklift")
 	if err != nil {
-		t.Fatalf("Failed to create AB test middleware: %v", err)
+		t.Fatalf("Failed to create Forklift test middleware: %v", err)
 	}
 
 	tests := []struct {
@@ -495,7 +498,7 @@ func TestInvalidSessionIDs(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req, _ := http.NewRequest("GET", "/test", nil)
 			if tt.sessionID != "" {
-				req.Header.Set("Cookie", fmt.Sprintf("%s=%s", sessionCookieName, tt.sessionID))
+				req.AddCookie(&http.Cookie{Name: sessionCookieName, Value: tt.sessionID})
 			}
 
 			rr := httptest.NewRecorder()
@@ -517,12 +520,16 @@ func TestInvalidSessionIDs(t *testing.T) {
 			if tt.expectedNewID {
 				if newSessionID == "" {
 					t.Error("Expected a new session ID to be set, but none was found")
-				}
-				if newSessionID == tt.sessionID {
+				} else if newSessionID == tt.sessionID {
 					t.Error("Expected a new valid session ID, but got an unchanged one")
+				} else {
+					// Validate the new session ID format (base64 encoded)
+					if _, err := base64.URLEncoding.DecodeString(newSessionID); err != nil {
+						t.Errorf("New session ID is not a valid base64 encoded string: %v", err)
+					}
 				}
 			} else {
-				if newSessionID != tt.sessionID {
+				if newSessionID != "" && newSessionID != tt.sessionID {
 					t.Error("Expected session ID to remain unchanged, but it was changed")
 				}
 			}
@@ -531,13 +538,13 @@ func TestInvalidSessionIDs(t *testing.T) {
 }
 
 func TestLargeNumberOfRulesAndConditions(t *testing.T) {
-	v1Server := abtest_testing.NewV1TestServer()
+	v1Server := NewV1TestServer()
 	defer v1Server.Close()
 
-	v2Server := abtest_testing.NewV2TestServer()
+	v2Server := NewV2TestServer()
 	defer v2Server.Close()
 
-	config := &abtest.Config{
+	config := &forklift.Config{
 		V1Backend: v1Server.URL,
 		V2Backend: v2Server.URL,
 		Rules:     generateLargeNumberOfRules(1000),
@@ -548,9 +555,9 @@ func TestLargeNumberOfRulesAndConditions(t *testing.T) {
 	})
 
 	start := time.Now()
-	middleware, err := abtest.NewABTest(next, config, "test-abtest")
+	middleware, err := forklift.NewForklift(next, config, "test-forklift")
 	if err != nil {
-		t.Fatalf("Failed to create AB test middleware: %v", err)
+		t.Fatalf("Failed to create Forklift test middleware: %v", err)
 	}
 	creationTime := time.Since(start)
 
@@ -580,21 +587,21 @@ func TestLargeNumberOfRulesAndConditions(t *testing.T) {
 }
 
 func TestLongAndComplexPathsAndQueryParameters(t *testing.T) {
-	v1Server := abtest_testing.NewV1TestServer()
+	v1Server := NewV1TestServer()
 	defer v1Server.Close()
 
-	v2Server := abtest_testing.NewV2TestServer()
+	v2Server := NewV2TestServer()
 	defer v2Server.Close()
 
-	config := &abtest.Config{
+	config := &forklift.Config{
 		V1Backend: v1Server.URL,
 		V2Backend: v2Server.URL,
-		Rules: []abtest.RoutingRule{
+		Rules: []forklift.RoutingRule{
 			{
 				PathPrefix: "/api/v1/users",
 				Method:     "GET",
 				Backend:    v2Server.URL,
-				Conditions: []abtest.RuleCondition{
+				Conditions: []forklift.RuleCondition{
 					{
 						Type:       "query",
 						QueryParam: "filter",
@@ -610,9 +617,9 @@ func TestLongAndComplexPathsAndQueryParameters(t *testing.T) {
 		t.Error("Next handler should not be called")
 	})
 
-	middleware, err := abtest.NewABTest(next, config, "test-abtest")
+	middleware, err := forklift.NewForklift(next, config, "test-forklift")
 	if err != nil {
-		t.Fatalf("Failed to create AB test middleware: %v", err)
+		t.Fatalf("Failed to create Forklift test middleware: %v", err)
 	}
 
 	longPath := "/api/v1/users/" + strings.Repeat("subpath/", 50) + "profile"
@@ -631,13 +638,13 @@ func TestLongAndComplexPathsAndQueryParameters(t *testing.T) {
 	}
 }
 
-func generateLargeNumberOfRules(count int) []abtest.RoutingRule {
-	rules := make([]abtest.RoutingRule, count)
+func generateLargeNumberOfRules(count int) []forklift.RoutingRule {
+	rules := make([]forklift.RoutingRule, count)
 	for i := 0; i < count; i++ {
-		rules[i] = abtest.RoutingRule{
+		rules[i] = forklift.RoutingRule{
 			Path:   fmt.Sprintf("/test%d", i),
 			Method: "GET",
-			Conditions: []abtest.RuleCondition{
+			Conditions: []forklift.RuleCondition{
 				{
 					Type:      "header",
 					Parameter: fmt.Sprintf("X-Test-%d", i),
@@ -653,34 +660,34 @@ func generateLargeNumberOfRules(count int) []abtest.RoutingRule {
 func TestEmptyAndInvalidConfigurations(t *testing.T) {
 	tests := []struct {
 		name        string
-		config      *abtest.Config
+		config      *forklift.Config
 		expectedErr string
 	}{
 		{
 			name:        "Empty configuration",
-			config:      &abtest.Config{},
+			config:      &forklift.Config{},
 			expectedErr: "missing V1Backend",
 		},
 		{
 			name: "Missing V1Backend",
-			config: &abtest.Config{
+			config: &forklift.Config{
 				V2Backend: "http://v2.example.com",
 			},
 			expectedErr: "missing V1Backend",
 		},
 		{
 			name: "Missing V2Backend",
-			config: &abtest.Config{
+			config: &forklift.Config{
 				V1Backend: "http://v1.example.com",
 			},
 			expectedErr: "missing V2Backend",
 		},
 		{
 			name: "Invalid percentage",
-			config: &abtest.Config{
+			config: &forklift.Config{
 				V1Backend: "http://v1.example.com",
 				V2Backend: "http://v2.example.com",
-				Rules: []abtest.RoutingRule{
+				Rules: []forklift.RoutingRule{
 					{
 						Path:       "/test",
 						Percentage: -0.5,
@@ -695,7 +702,7 @@ func TestEmptyAndInvalidConfigurations(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
-			_, err := abtest.NewABTest(next, tt.config, "test-abtest")
+			_, err := forklift.NewForklift(next, tt.config, "test-forklift")
 			if err == nil {
 				t.Errorf("Expected an error, but didn't get one")
 			} else if !strings.Contains(err.Error(), tt.expectedErr) {
@@ -706,10 +713,10 @@ func TestEmptyAndInvalidConfigurations(t *testing.T) {
 }
 
 func TestZeroAndHundredPercentRouting(t *testing.T) {
-	v1Server := abtest_testing.NewV1TestServer()
+	v1Server := NewV1TestServer()
 	defer v1Server.Close()
 
-	v2Server := abtest_testing.NewV2TestServer()
+	v2Server := NewV2TestServer()
 	defer v2Server.Close()
 
 	tests := []struct {
@@ -731,10 +738,10 @@ func TestZeroAndHundredPercentRouting(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			config := &abtest.Config{
+			config := &forklift.Config{
 				V1Backend: v1Server.URL,
 				V2Backend: v2Server.URL,
-				Rules: []abtest.RoutingRule{
+				Rules: []forklift.RoutingRule{
 					{
 						Path:       "/test",
 						Method:     "GET",
@@ -748,9 +755,9 @@ func TestZeroAndHundredPercentRouting(t *testing.T) {
 				t.Error("Next handler should not be called")
 			})
 
-			middleware, err := abtest.NewABTest(next, config, "test-abtest")
+			middleware, err := forklift.NewForklift(next, config, "test-forklift")
 			if err != nil {
-				t.Fatalf("Failed to create AB test middleware: %v", err)
+				t.Fatalf("Failed to create Forklift test middleware: %v", err)
 			}
 
 			req, _ := http.NewRequest("GET", "/test", nil)
@@ -790,10 +797,10 @@ func TestSelectBackend(t *testing.T) {
 	}))
 	defer v2Server.Close()
 
-	config := &abtest.Config{
+	config := &forklift.Config{
 		V1Backend: v1Server.URL,
 		V2Backend: v2Server.URL,
-		Rules: []abtest.RoutingRule{
+		Rules: []forklift.RoutingRule{
 			{
 				Path:    "/test",
 				Method:  "GET",
@@ -808,7 +815,7 @@ func TestSelectBackend(t *testing.T) {
 				Path:    "/query-test",
 				Method:  "GET",
 				Backend: v2Server.URL,
-				Conditions: []abtest.RuleCondition{
+				Conditions: []forklift.RuleCondition{
 					{
 						Type:       "query",
 						QueryParam: "mid",
@@ -821,7 +828,7 @@ func TestSelectBackend(t *testing.T) {
 				Path:    "/complex",
 				Method:  "POST",
 				Backend: v2Server.URL,
-				Conditions: []abtest.RuleCondition{
+				Conditions: []forklift.RuleCondition{
 					{
 						Type:       "query",
 						QueryParam: "version",
@@ -847,9 +854,9 @@ func TestSelectBackend(t *testing.T) {
 		}
 	})
 
-	middleware, err := abtest.NewABTest(next, config, "test-abtest")
+	middleware, err := forklift.NewForklift(next, config, "test-forklift")
 	if err != nil {
-		t.Fatalf("Failed to create AB test middleware: %v", err)
+		t.Fatalf("Failed to create Forklift test middleware: %v", err)
 	}
 
 	tests := []struct {

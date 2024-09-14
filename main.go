@@ -20,7 +20,7 @@ import (
 var debug = os.Getenv("DEBUG") == "true"
 
 const (
-	sessionCookieName    = "abtest_session_id"
+	sessionCookieName    = "forklift_id"
 	sessionCookieMaxAge  = 86400 * 30 // 30 days
 	cacheDuration        = 24 * time.Hour
 	cacheCleanupInterval = 10 * time.Minute
@@ -53,8 +53,8 @@ type RuleCondition struct {
 	QueryParam string `json:"queryParam,omitempty"`
 }
 
-// ABTest is the main struct for the AB testing middleware
-type ABTest struct {
+// Forklift is the main struct for the AB testing middleware
+type Forklift struct {
 	next       http.Handler
 	config     *Config
 	name       string
@@ -77,15 +77,15 @@ func New(ctx context.Context, next http.Handler, config *Config, name string) (h
 	if debug {
 		log.Printf("Debug: Creating new AB testing middleware with config: %+v", config)
 	}
-	abTest, err := NewABTest(next, config, name)
+	forklift, err := NewForklift(next, config, name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AB test middleware: %w", err)
 	}
-	return abTest, nil
+	return forklift, nil
 }
 
-// NewABTest creates a new AB testing middleware
-func NewABTest(next http.Handler, config *Config, name string) (*ABTest, error) {
+// NewForklift creates a new AB testing middleware
+func NewForklift(next http.Handler, config *Config, name string) (*Forklift, error) {
 	if config == nil {
 		return nil, fmt.Errorf("empty configuration")
 	}
@@ -113,7 +113,7 @@ func NewABTest(next http.Handler, config *Config, name string) (*ABTest, error) 
 
 	go ruleEngine.cleanupCache()
 
-	abtest := &ABTest{
+	forklift := &Forklift{
 		next:       next,
 		config:     config,
 		name:       name,
@@ -122,7 +122,7 @@ func NewABTest(next http.Handler, config *Config, name string) (*ABTest, error) 
 
 	logger.Infof("Starting forklift middleware: %s", name)
 
-	return abtest, nil
+	return forklift, nil
 }
 
 // generateSessionID creates a new random session ID
@@ -136,7 +136,7 @@ func generateSessionID() (string, error) {
 }
 
 // ServeHTTP implements the http.Handler interface
-func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
+func (a *Forklift) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if debug {
 		logger.Infof("Received request: %s %s", req.Method, req.URL.Path)
 		logger.Infof("Headers: %v", req.Header)
