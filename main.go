@@ -205,32 +205,11 @@ func (a *Forklift) handleSessionID(rw http.ResponseWriter, req *http.Request) st
 }
 
 func (a *Forklift) selectBackend(req *http.Request) string {
-	sessionID, err := req.Cookie(sessionCookieName)
-	if err != nil {
-		a.logger.Printf("Error getting session ID: %v", err)
-		return a.config.DefaultBackend
-	}
-
 	for _, rule := range a.config.Rules {
 		if a.ruleEngine.ruleMatches(req, rule) {
 			if rule.Backend != "" {
-				var totalThreshold float64
-				for _, condition := range rule.Conditions {
-					if condition.Type == "SessionID" {
-						threshold, err := strconv.ParseFloat(condition.Value, 64)
-						if err != nil {
-							a.logger.Printf("Error parsing threshold: %v", err)
-							continue
-						}
-						totalThreshold += threshold
-						if a.ruleEngine.shouldRouteToV2(sessionID.Value, totalThreshold) {
-							return rule.Backend
-						}
-					}
-				}
+				return rule.Backend
 			}
-			// If no SessionID condition matched, return the rule's backend
-			return rule.Backend
 		}
 	}
 	return a.config.DefaultBackend
@@ -427,29 +406,6 @@ func parseFloats(s1, s2 string) (float64, float64) {
 	return f1, f2
 }
 
-// shouldRouteToV2 determines if the request should be routed to V2 based on the percentage and session ID.
-func (re *RuleEngine) shouldRouteToV2(sessionID string, percentage float64) bool {
-	// Use the session ID as the key for consistent routing
-	key := sessionID
-
-	// Generate a consistent hash for the key
-	h := fnv.New32a()
-	_, err := h.Write([]byte(key))
-	if err != nil {
-		re.config.Logger.Printf("Error writing to hash: %v", err)
-		return false
-	}
-	hashValue := h.Sum32()
-
-	// Use the hash to make a consistent decision
-	decision := float64(hashValue)/float64(^uint32(0)) < (percentage / 100)
-
-	if re.config.Debug {
-		re.config.Logger.Infof("Routing decision for session %s: V%d (percentage: %.2f)", sessionID, map[bool]int{false: 1, true: v2Backend}[decision], percentage)
-	}
-
-	return decision
-}
 
 // cleanupCache periodically removes old entries from the cache.
 func (re *RuleEngine) cleanupCache() {

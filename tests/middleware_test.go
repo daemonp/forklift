@@ -786,25 +786,11 @@ func TestThreeBackendsSplitRouting(t *testing.T) {
 				Path:    "/test",
 				Method:  "GET",
 				Backend: backend2.URL,
-				Conditions: []forklift.RuleCondition{
-					{
-						Type:     "SessionID",
-						Operator: "lt",
-						Value:    "0.1",
-					},
-				},
 			},
 			{
 				Path:    "/test",
 				Method:  "GET",
 				Backend: backend3.URL,
-				Conditions: []forklift.RuleCondition{
-					{
-						Type:     "SessionID",
-						Operator: "lt",
-						Value:    "0.2",
-					},
-				},
 			},
 		},
 	}
@@ -823,10 +809,6 @@ func TestThreeBackendsSplitRouting(t *testing.T) {
 
 	for i := 0; i < totalRequests; i++ {
 		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
-		
-		// Set a unique session ID for each request
-		sessionID := fmt.Sprintf("session-%d", i)
-		req.AddCookie(&http.Cookie{Name: "forklift_id", Value: sessionID})
 		
 		rr := httptest.NewRecorder()
 
