@@ -113,6 +113,13 @@ func NewForklift(next http.Handler, config *Config, name string) (*Forklift, err
 		return nil, errMissingDefaultBackend
 	}
 
+	// Validate rules
+	for _, rule := range config.Rules {
+		if rule.Backend == "" {
+			return nil, fmt.Errorf("invalid rule: missing Backend")
+		}
+	}
+
 	// Sort rules by priority (higher priority first)
 	sort.Slice(config.Rules, func(i, j int) bool {
 		return config.Rules[i].Priority > config.Rules[j].Priority
@@ -211,38 +218,20 @@ func (a *Forklift) selectBackend(req *http.Request) string {
 		return a.config.DefaultBackend
 	}
 
-	hash := fnv.New32a()
-	hash.Write([]byte(sessionID))
-	hashValue := hash.Sum32()
+	var highestPriorityRule *RoutingRule
+	highestPriority := -1
 
-	var matchingRules []RoutingRule
-	var totalWeight int
-
-	for _, rule := range a.config.Rules {
+	for i, rule := range a.config.Rules {
 		if a.ruleEngine.ruleMatches(req, rule) {
-			if rule.Backend != "" {
-				weight := rule.Weight
-				if weight <= 0 {
-					weight = 1
-				}
-				totalWeight += weight
-				matchingRules = append(matchingRules, rule)
+			if rule.Priority > highestPriority || highestPriorityRule == nil {
+				highestPriority = rule.Priority
+				highestPriorityRule = &a.config.Rules[i]
 			}
 		}
 	}
 
-	if totalWeight > 0 {
-		randomValue := hashValue % uint32(totalWeight)
-		for _, rule := range matchingRules {
-			weight := rule.Weight
-			if weight <= 0 {
-				weight = 1
-			}
-			if randomValue < uint32(weight) {
-				return rule.Backend
-			}
-			randomValue -= uint32(weight)
-		}
+	if highestPriorityRule != nil && highestPriorityRule.Backend != "" {
+		return highestPriorityRule.Backend
 	}
 
 	return a.config.DefaultBackend
@@ -331,13 +320,9 @@ func (a *Forklift) sendProxyRequest(rw http.ResponseWriter, proxyReq *http.Reque
 
 // ruleMatches checks if a request matches a given rule.
 func (re *RuleEngine) ruleMatches(req *http.Request, rule RoutingRule) bool {
-	if rule.Path != "" && rule.Path != req.URL.Path {
-		return false
-	}
-	if rule.PathPrefix != "" && !strings.HasPrefix(req.URL.Path, rule.PathPrefix) {
-		return false
-	}
-	if rule.Method != "" && rule.Method != req.Method {
+	if (rule.Path != "" && rule.Path != req.URL.Path) ||
+		(rule.PathPrefix != "" && !strings.HasPrefix(req.URL.Path, rule.PathPrefix)) ||
+		(rule.Method != "" && rule.Method != req.Method) {
 		return false
 	}
 	if re.config.Debug {
