@@ -1,12 +1,12 @@
 package tests
 
 import (
-	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -531,19 +531,40 @@ func getNewSessionID(rr *httptest.ResponseRecorder) string {
 func validateSessionID(t *testing.T, oldSessionID, newSessionID string, expectedNewID bool) {
 	t.Helper()
 	if expectedNewID {
-		switch {
-		case newSessionID == "":
-			t.Error("Expected a new session ID to be set, but none was found")
-		case newSessionID == oldSessionID:
-			t.Error("Expected a new valid session ID, but got an unchanged one")
-		default:
-			// Validate the new session ID format (base64 encoded)
-			if _, err := base64.URLEncoding.DecodeString(newSessionID); err != nil {
-				t.Errorf("New session ID is not a valid base64 encoded string: %v", err)
-			}
-		}
-	} else if newSessionID != "" && newSessionID != oldSessionID {
+		validateNewSessionID(t, oldSessionID, newSessionID)
+	} else {
+		validateUnchangedSessionID(t, oldSessionID, newSessionID)
+	}
+}
+
+func validateNewSessionID(t *testing.T, oldSessionID, newSessionID string) {
+	t.Helper()
+	switch {
+	case newSessionID == "":
+		t.Error("Expected a new session ID to be set, but none was found")
+	case newSessionID == oldSessionID:
+		t.Error("Expected a new valid session ID, but got an unchanged one")
+	default:
+		validateSessionIDFormat(t, newSessionID)
+	}
+}
+
+func validateUnchangedSessionID(t *testing.T, oldSessionID, newSessionID string) {
+	t.Helper()
+	if newSessionID != "" && newSessionID != oldSessionID {
 		t.Error("Expected session ID to remain unchanged, but it was changed")
+	}
+}
+
+func validateSessionIDFormat(t *testing.T, sessionID string) {
+	t.Helper()
+	parts := strings.Split(sessionID, "-")
+	if len(parts) != 2 {
+		t.Errorf("New session ID is not in the correct format (hash-percentage): %s", sessionID)
+		return
+	}
+	if _, err := strconv.ParseFloat(parts[1], 64); err != nil {
+		t.Errorf("New session ID percentage is not a valid float: %v", err)
 	}
 }
 

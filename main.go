@@ -3,11 +3,10 @@ package forklift
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"hash/fnv"
+	"hash/crc32"
 	"io"
 	"log"
 	"net/http"
@@ -17,6 +16,11 @@ import (
 	"strings"
 	"sync"
 	"time"
+)
+
+const (
+	sessionIDParts   = 2
+	percentageModulo = 100
 )
 
 var (
@@ -153,15 +157,29 @@ func NewForklift(next http.Handler, config *Config, name string) (*Forklift, err
 	return forklift, nil
 }
 
-// generateSessionID creates a new random session ID.
-func generateSessionID() (string, error) {
-	const sessionIDBytes = 32
-	b := make([]byte, sessionIDBytes)
-	_, err := rand.Read(b)
+// generateSessionID creates a new session ID with a consistent hash and percentage.
+func generateSessionID(req *http.Request) (string, error) {
+	// Generate a consistent hash based on IP and User-Agent
+	ip := req.RemoteAddr
+	userAgent := req.UserAgent()
+	hash := consistentHash(ip + userAgent)
+
+	// Generate a percentage value (00-99)
+	hashInt, err := strconv.ParseUint(hash, 16, 32)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error parsing hash: %w", err)
 	}
-	return base64.URLEncoding.EncodeToString(b), nil
+	percentage := hashInt % percentageModulo
+
+	// Combine the hash and percentage
+	return fmt.Sprintf("%s-%02d", hash, percentage), nil
+}
+
+// consistentHash generates a consistent hash for a given string.
+func consistentHash(s string) string {
+	h := crc32.NewIEEE()
+	_, _ = h.Write([]byte(s))
+	return fmt.Sprintf("%08x", h.Sum32())
 }
 
 // ServeHTTP implements the http.Handler interface.
@@ -433,30 +451,24 @@ func (re *RuleEngine) shouldRouteToV2(sessionID string, percentage float64) bool
 		return true
 	}
 
-	// Use the session ID as the key for consistent routing
-	key := sessionID
-
-	// Check if we have a cached decision for this key
-	if cachedDecision, found := re.cache.Load(key); found {
-		if decision, ok := cachedDecision.(bool); ok {
-			return decision
-		}
-	}
-
-	// Generate a consistent hash for the key
-	h := fnv.New32a()
-	_, err := h.Write([]byte(key))
-	if err != nil {
-		re.config.Logger.Printf("Error writing to hash: %v", err)
+	const expectedParts = 2
+	// Extract the hash part from the session ID
+	parts := strings.Split(sessionID, "-")
+	if len(parts) != expectedParts || len(parts[1]) != 8 {
+		re.config.Logger.Printf("Invalid session ID format: %s", sessionID)
 		return false
 	}
-	hashValue := h.Sum32()
+	hashPart := parts[1]
+
+	// Convert the hash to a number
+	hashValue, err := strconv.ParseUint(hashPart, 16, 32)
+	if err != nil {
+		re.config.Logger.Printf("Error parsing hash value: %v", err)
+		return false
+	}
 
 	// Use the hash to make a consistent decision
 	decision := float64(hashValue)/float64(^uint32(0)) < (percentage / fullPercentage)
-
-	// Cache the decision
-	re.cache.Store(key, decision)
 
 	if re.config.Debug {
 		re.config.Logger.Infof("Routing decision for session %s: V%d", sessionID, map[bool]int{false: 1, true: v2Backend}[decision])
@@ -488,7 +500,18 @@ func isValidSessionID(sessionID string) bool {
 	if len(sessionID) == 0 || len(sessionID) > maxSessionIDLength {
 		return false
 	}
-	_, err := base64.URLEncoding.DecodeString(sessionID)
+	parts := strings.Split(sessionID, "-")
+	if len(parts) != sessionIDParts {
+		return false
+	}
+	if len(parts[0]) != 32 || len(parts[1]) != 8 {
+		return false
+	}
+	_, err := base64.URLEncoding.DecodeString(parts[0] + "==")
+	if err != nil {
+		return false
+	}
+	_, err = strconv.ParseUint(parts[1], 16, 32)
 	return err == nil
 }
 
@@ -499,7 +522,7 @@ func getOrCreateSessionID(rw http.ResponseWriter, req *http.Request) string {
 		return cookie.Value
 	}
 
-	sessionID, err := generateSessionID()
+	sessionID, err := generateSessionID(req)
 	if err != nil {
 		log.Printf("Error generating session ID: %v", err)
 		return ""
