@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"sort"
@@ -19,6 +18,27 @@ import (
 )
 
 var debug = os.Getenv("DEBUG") == "true"
+
+type DefaultLogger struct{}
+
+var logger Logger = DefaultLogger{}
+
+type Logger interface {
+	Printf(format string, v ...interface{})
+	Infof(format string, v ...interface{})
+}
+
+func (l DefaultLogger) Printf(format string, v ...interface{}) {
+	fmt.Fprintf(os.Stdout, format+"\n", v...)
+}
+
+func (l DefaultLogger) Infof(format string, v ...interface{}) {
+	fmt.Fprintf(os.Stdout, "level=info msg=\""+format+"\"\n", v...)
+}
+
+func SetLogger(l Logger) {
+	logger = l
+}
 
 const (
 	sessionCookieName    = "abtest_session_id"
@@ -76,12 +96,16 @@ func NewABTest(next http.Handler, config *Config, name string) (*ABTest, error) 
 
 	go ruleEngine.cleanupCache()
 
-	return &ABTest{
+	abtest := &ABTest{
 		next:       next,
 		config:     config,
 		name:       name,
 		ruleEngine: ruleEngine,
-	}, nil
+	}
+
+	logger.Infof("Starting forklift middleware: %s", name)
+
+	return abtest, nil
 }
 
 // generateSessionID creates a new random session ID
@@ -97,26 +121,26 @@ func generateSessionID() (string, error) {
 // ServeHTTP implements the http.Handler interface
 func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if debug {
-		log.Printf("Received request: %s %s", req.Method, req.URL.Path)
-		log.Printf("Headers: %v", req.Header)
+		logger.Infof("Received request: %s %s", req.Method, req.URL.Path)
+		logger.Infof("Headers: %v", req.Header)
 	}
 
 	// Check for existing session cookie
 	sessionID := getOrCreateSessionID(rw, req)
 	if sessionID == "" {
-		log.Printf("Error handling session ID")
+		logger.Infof("Error handling session ID")
 		http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
 	if req == nil {
-		log.Printf("Error: Request is nil")
+		logger.Printf("Error: Request is nil")
 		http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
 	if debug {
-		log.Printf("Session ID: %s", sessionID)
+		logger.Infof("Session ID: %s", sessionID)
 	}
 
 	backend := a.config.V1Backend
@@ -131,10 +155,10 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 	}
 
-	// Add a header to indicate the selected backend
-	rw.Header().Set("X-Selected-Backend", backend)
-
-	log.Printf("Routing request to backend: %s", backend)
+	if debug {
+		rw.Header().Set("X-Selected-Backend", backend)
+		logger.Infof("Routing request to backend: %s", backend)
+	}
 
 	// Create a new request to the selected backend
 	var pathPrefix string
@@ -162,7 +186,7 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 	proxyReq, err := http.NewRequest(req.Method, backendURL, proxyBody)
 	if err != nil {
-		log.Printf("Error creating proxy request: %v", err)
+		logger.Printf("Error creating proxy request: %v", err)
 		http.Error(rw, "Error creating proxy request", http.StatusInternalServerError)
 		return
 	}
@@ -177,8 +201,8 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	proxyReq.Host = proxyReq.URL.Host
 
 	if debug {
-		log.Printf("Final request URL: %s", proxyReq.URL.String())
-		log.Printf("Final request headers: %v", proxyReq.Header)
+		logger.Infof("Final request URL: %s", proxyReq.URL.String())
+		logger.Infof("Final request headers: %v", proxyReq.Header)
 	}
 
 	// Send the request to the selected backend
@@ -187,7 +211,7 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 	resp, err := client.Do(proxyReq)
 	if err != nil {
-		log.Printf("Error sending request to backend: %v", err)
+		logger.Printf("Error sending request to backend: %v", err)
 		http.Error(rw, "Error sending request to backend", http.StatusBadGateway)
 		return
 	}
@@ -202,15 +226,15 @@ func (a *ABTest) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	rw.WriteHeader(resp.StatusCode)
 	_, err = io.Copy(rw, resp.Body)
 	if err != nil {
-		log.Printf("Error copying response body: %v", err)
+		logger.Printf("Error copying response body: %v", err)
 		// If we've already started writing the response, we can't change the status code
 		// So we'll just log the error and return
 		return
 	}
 
 	if debug {
-		log.Printf("Response status code: %d", resp.StatusCode)
-		log.Printf("Response headers: %v", resp.Header)
+		logger.Infof("Response status code: %d", resp.StatusCode)
+		logger.Infof("Response headers: %v", resp.Header)
 	}
 }
 
@@ -226,7 +250,7 @@ func (re *RuleEngine) ruleMatches(req *http.Request, rule RoutingRule) bool {
 		return false
 	}
 	if debug {
-		log.Printf("Checking conditions for path: %s", req.URL.Path)
+		logger.Infof("Checking conditions for path: %s", req.URL.Path)
 	}
 	return re.checkConditions(req, rule.Conditions)
 }
@@ -255,7 +279,7 @@ func (re *RuleEngine) checkCondition(req *http.Request, condition RuleCondition)
 		result = checkForm(req, condition)
 	}
 	if debug {
-		log.Printf("Condition check result for %s %s: %v", condition.Type, condition.Parameter, result)
+		logger.Infof("Condition check result for %s %s: %v", condition.Type, condition.Parameter, result)
 	}
 	return result
 }
@@ -263,11 +287,11 @@ func (re *RuleEngine) checkCondition(req *http.Request, condition RuleCondition)
 func checkForm(req *http.Request, condition RuleCondition) bool {
 	formValue := req.PostFormValue(condition.Parameter)
 	if debug {
-		log.Printf("Form parameter %s: %s", condition.Parameter, formValue)
+		logger.Infof("Form parameter %s: %s", condition.Parameter, formValue)
 	}
 	result := compareValues(formValue, condition.Operator, condition.Value)
 	if debug {
-		log.Printf("Form condition result: %v", result)
+		logger.Infof("Form condition result: %v", result)
 	}
 	return result
 }
@@ -280,12 +304,12 @@ func checkHeader(req *http.Request, condition RuleCondition) bool {
 func checkQuery(req *http.Request, condition RuleCondition) bool {
 	queryValue := req.URL.Query().Get(condition.QueryParam)
 	if debug {
-		log.Printf("Query parameter %s: %s", condition.QueryParam, queryValue)
-		log.Printf("Comparing query value: %s %s %s", queryValue, condition.Operator, condition.Value)
+		logger.Infof("Query parameter %s: %s", condition.QueryParam, queryValue)
+		logger.Infof("Comparing query value: %s %s %s", queryValue, condition.Operator, condition.Value)
 	}
 	result := compareValues(queryValue, condition.Operator, condition.Value)
 	if debug {
-		log.Printf("Query condition result: %v", result)
+		logger.Infof("Query condition result: %v", result)
 	}
 	return result
 }
@@ -355,7 +379,9 @@ func (re *RuleEngine) shouldRouteToV2(sessionID string, percentage float64) bool
 	// Cache the decision
 	re.cache.Store(key, decision)
 
-	log.Printf("Routing decision for session %s: V%d", sessionID, map[bool]int{false: 1, true: 2}[decision])
+	if debug {
+		logger.Infof("Routing decision for session %s: V%d", sessionID, map[bool]int{false: 1, true: 2}[decision])
+	}
 
 	return decision
 }
@@ -396,7 +422,7 @@ func getOrCreateSessionID(rw http.ResponseWriter, req *http.Request) string {
 
 	sessionID, err := generateSessionID()
 	if err != nil {
-		log.Printf("Error generating session ID: %v", err)
+		logger.Printf("Error generating session ID: %v", err)
 		return ""
 	}
 
