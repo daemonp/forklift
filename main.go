@@ -20,10 +20,11 @@ import (
 )
 
 var (
-	errEmptyConfig       = errors.New("empty configuration")
-	errMissingV1Backend  = errors.New("missing V1Backend")
-	errMissingV2Backend  = errors.New("missing V2Backend")
-	errInvalidPercentage = errors.New("invalid percentage: must be between 0 and 100")
+	errEmptyConfig           = errors.New("empty configuration")
+	errMissingV1Backend      = errors.New("missing V1Backend")
+	errMissingV2Backend      = errors.New("missing V2Backend")
+	errInvalidPercentage     = errors.New("invalid percentage: must be between 0 and 100")
+	errMissingDefaultBackend = errors.New("missing DefaultBackend")
 )
 
 // Config holds the configuration for the AB testing middleware.
@@ -165,7 +166,7 @@ func (a *Forklift) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	backend := a.selectBackend(req, sessionID)
+	backend := a.selectBackend(req)
 
 	if a.debug {
 		rw.Header().Set("X-Selected-Backend", backend)
