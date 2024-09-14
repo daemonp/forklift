@@ -456,13 +456,12 @@ func TestInvalidSessionIDs(t *testing.T) {
 	defer v2Server.Close()
 
 	config := &forklift.Config{
-		V1Backend: v1Server.URL,
-		V2Backend: v2Server.URL,
+		DefaultBackend: v1Server.URL,
 		Rules: []forklift.RoutingRule{
 			{
-				Path:       "/test",
-				Method:     "GET",
-				Percentage: 50,
+				Path:    "/test",
+				Method:  "GET",
+				Backend: v2Server.URL,
 			},
 		},
 	}
