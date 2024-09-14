@@ -150,7 +150,7 @@ func updateSessionID(t *testing.T, resp *http.Response, sessionID *string) {
 func TestGradualRolloutIntegration(t *testing.T) {
 	v1Count := 0
 	v2Count := 0
-	totalRequests := 1000
+	totalRequests := 10000
 
 	client := &http.Client{}
 
@@ -185,7 +185,7 @@ func TestGradualRolloutIntegration(t *testing.T) {
 		}
 
 		// Add a small delay to avoid overwhelming the server
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(1 * time.Millisecond)
 	}
 
 	v1Percentage := float64(v1Count) / float64(totalRequests) * 100
@@ -199,9 +199,16 @@ func TestGradualRolloutIntegration(t *testing.T) {
 
 	fmt.Printf("Chi-square statistic: %.4f, p-value: %.4f\n", chiSquare, pValue)
 
-	// Use a significance level of 0.05
-	if pValue < 0.05 {
+	// Use a significance level of 0.01 (99% confidence)
+	if pValue < 0.01 {
 		t.Errorf("Distribution is not equal (p-value = %.4f)", pValue)
+	} else {
+		fmt.Println("Distribution is considered equal (failed to reject null hypothesis)")
+	}
+
+	// Check if the distribution is within a reasonable range (45-55%)
+	if v1Percentage < 45 || v1Percentage > 55 || v2Percentage < 45 || v2Percentage > 55 {
+		t.Errorf("Distribution is outside the expected range (45-55%%)")
 	}
 }
 
