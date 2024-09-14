@@ -26,11 +26,9 @@ func TestIntegration(t *testing.T) {
 		body         string
 		expectedBody string
 	}{
-		{"Route to V1 or V2", "/", "GET", "", "Hello from V"},
-		{"Route to V1 or V2 (second request)", "/", "GET", "", "Hello from V"},
-		{"Route to V2 (POST with MID=a)", "/", "POST", "MID=a", "Hello from V"},
-		{"Route to V1 (POST without MID)", "/", "POST", "", "Hello from V1"},
-		{"Route to V3", "/v3", "GET", "", "Hello from V3"},
+		{"Route to Default Backend", "/", "GET", "", "Hello from V1"},
+		{"Route to V2 Backend", "/", "POST", "MID=a", "Hello from V2"},
+		{"Route to V3 Backend", "/v3", "GET", "", "Hello from V3"},
 	}
 
 	client := &http.Client{}

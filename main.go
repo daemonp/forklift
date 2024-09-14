@@ -247,19 +247,12 @@ func (a *Forklift) selectWeightedBackend(sessionID string, rules []*RoutingRule)
 	rule := rules[0]
 	backends := strings.Split(rule.Backend, ",")
 	weights := make([]int, len(backends))
+	totalWeight := 0
 
-	if rule.Weight > 0 {
-		// If a single weight is provided, distribute it among the backends
-		remainingWeight := 100 - rule.Weight
-		weights[0] = rule.Weight
-		for i := 1; i < len(backends); i++ {
-			weights[i] = remainingWeight / (len(backends) - 1)
-		}
-	} else {
-		// If no weight is provided, distribute evenly
-		for i := range backends {
-			weights[i] = 100 / len(backends)
-		}
+	// If no weight is provided, distribute evenly
+	for i := range backends {
+		weights[i] = 100 / len(backends)
+		totalWeight += weights[i]
 	}
 
 	totalWeight := 0
