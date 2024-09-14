@@ -166,14 +166,12 @@ func TestGradualRollout(t *testing.T) {
 	defer v2Server.Close()
 
 	config := &forklift.Config{
-		V1Backend: v1Server.URL,
-		V2Backend: v2Server.URL,
+		DefaultBackend: v1Server.URL,
 		Rules: []forklift.RoutingRule{
 			{
-				Path:       "/gradual-rollout",
-				Method:     "GET",
-				Backend:    v2Server.URL,
-				Percentage: 0.5,
+				Path:    "/gradual-rollout",
+				Method:  "GET",
+				Backend: v2Server.URL,
 			},
 		},
 	}
@@ -237,14 +235,12 @@ func TestSessionAffinity(t *testing.T) {
 	defer v2Server.Close()
 
 	config := &forklift.Config{
-		V1Backend: v1Server.URL,
-		V2Backend: v2Server.URL,
+		DefaultBackend: v1Server.URL,
 		Rules: []forklift.RoutingRule{
 			{
-				Path:       "/session-test",
-				Method:     "GET",
-				Backend:    v2Server.URL,
-				Percentage: 0.5,
+				Path:    "/session-test",
+				Method:  "GET",
+				Backend: v2Server.URL,
 			},
 		},
 	}
@@ -747,14 +743,12 @@ func TestZeroAndHundredPercentRouting(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			config := &forklift.Config{
-				V1Backend: v1Server.URL,
-				V2Backend: v2Server.URL,
+				DefaultBackend: v1Server.URL,
 				Rules: []forklift.RoutingRule{
 					{
-						Path:       "/test",
-						Method:     "GET",
-						Backend:    v2Server.URL,
-						Percentage: tt.percentage,
+						Path:    "/test",
+						Method:  "GET",
+						Backend: v2Server.URL,
 					},
 				},
 			}

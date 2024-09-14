@@ -137,13 +137,11 @@ func TestForkliftPathPrefixRewrite(t *testing.T) {
 
 	// Create Forklift configuration
 	config := &forklift.Config{
-		V1Backend: v1Server.URL,
-		V2Backend: v2Server.URL,
+		DefaultBackend: v1Server.URL,
 		Rules: []forklift.RoutingRule{
 			{
 				PathPrefix: "/api",
 				Backend:    v2Server.URL,
-				Percentage: fullPercentage,
 			},
 		},
 	}
