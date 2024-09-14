@@ -240,12 +240,27 @@ func (a *Forklift) selectBackend(req *http.Request) string {
 }
 
 func (a *Forklift) selectWeightedBackend(sessionID string, rules []*RoutingRule) string {
+	if len(rules) == 0 {
+		return a.config.DefaultBackend
+	}
+
+	rule := rules[0]
+	backends := strings.Split(rule.Backend, ",")
+	weights := strings.Split(rule.Weight, ",")
+
+	if len(backends) != len(weights) {
+		a.logger.Printf("Error: number of backends (%d) does not match number of weights (%d)", len(backends), len(weights))
+		return a.config.DefaultBackend
+	}
+
 	totalWeight := 0
-	for _, rule := range rules {
-		if rule.Weight == 0 {
-			rule.Weight = 1 // Default weight of 1 if not specified
+	for _, w := range weights {
+		weight, err := strconv.Atoi(w)
+		if err != nil {
+			a.logger.Printf("Error parsing weight: %v", err)
+			return a.config.DefaultBackend
 		}
-		totalWeight += rule.Weight
+		totalWeight += weight
 	}
 
 	// Use the session ID to deterministically select a backend
@@ -254,15 +269,16 @@ func (a *Forklift) selectWeightedBackend(sessionID string, rules []*RoutingRule)
 	randomValue := float64(hash.Sum32()) / float64(uint32(^uint32(0)))
 
 	cumulativeWeight := 0.0
-	for _, rule := range rules {
-		cumulativeWeight += float64(rule.Weight) / float64(totalWeight)
+	for i, w := range weights {
+		weight, _ := strconv.Atoi(w)
+		cumulativeWeight += float64(weight) / float64(totalWeight)
 		if randomValue < cumulativeWeight {
-			return rule.Backend
+			return backends[i]
 		}
 	}
 
-	// This should never happen, but return the last rule's backend just in case
-	return rules[len(rules)-1].Backend
+	// This should never happen, but return the last backend just in case
+	return backends[len(backends)-1]
 }
 
 func (a *Forklift) createProxyRequest(req *http.Request, backend string) (*http.Request, error) {

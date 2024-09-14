@@ -151,7 +151,9 @@ func TestGradualRolloutIntegration(t *testing.T) {
 	backendCounts := make(map[string]int)
 	totalRequests := 10000
 
-	client := &http.Client{}
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
 
 	for i := 0; i < totalRequests; i++ {
 		req, err := http.NewRequest("GET", traefikURL+"/gradual", nil)
