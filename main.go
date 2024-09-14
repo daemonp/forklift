@@ -214,6 +214,7 @@ func (a *Forklift) selectBackend(req *http.Request) string {
 	for _, rule := range a.config.Rules {
 		if a.ruleEngine.ruleMatches(req, rule) {
 			if rule.Backend != "" {
+				var totalThreshold float64
 				for _, condition := range rule.Conditions {
 					if condition.Type == "SessionID" {
 						threshold, err := strconv.ParseFloat(condition.Value, 64)
@@ -221,7 +222,8 @@ func (a *Forklift) selectBackend(req *http.Request) string {
 							a.logger.Printf("Error parsing threshold: %v", err)
 							continue
 						}
-						if a.ruleEngine.shouldRouteToV2(sessionID.Value, threshold) {
+						totalThreshold += threshold
+						if a.ruleEngine.shouldRouteToV2(sessionID.Value, totalThreshold) {
 							return rule.Backend
 						}
 					}
@@ -427,25 +429,8 @@ func parseFloats(s1, s2 string) (float64, float64) {
 
 // shouldRouteToV2 determines if the request should be routed to V2 based on the percentage and session ID.
 func (re *RuleEngine) shouldRouteToV2(sessionID string, percentage float64) bool {
-	// Always route to V1 if percentage is 0
-	if percentage == 0 {
-		return false
-	}
-
-	// Always route to V2 if percentage is 100
-	if percentage == 100 {
-		return true
-	}
-
 	// Use the session ID as the key for consistent routing
 	key := sessionID
-
-	// Check if we have a cached decision for this key
-	if cachedDecision, found := re.cache.Load(key); found {
-		if decision, ok := cachedDecision.(bool); ok {
-			return decision
-		}
-	}
 
 	// Generate a consistent hash for the key
 	h := fnv.New32a()
@@ -458,9 +443,6 @@ func (re *RuleEngine) shouldRouteToV2(sessionID string, percentage float64) bool
 
 	// Use the hash to make a consistent decision
 	decision := float64(hashValue)/float64(^uint32(0)) < (percentage / 100)
-
-	// Cache the decision
-	re.cache.Store(key, decision)
 
 	if re.config.Debug {
 		re.config.Logger.Infof("Routing decision for session %s: V%d (percentage: %.2f)", sessionID, map[bool]int{false: 1, true: v2Backend}[decision], percentage)
