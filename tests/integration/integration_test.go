@@ -1,4 +1,4 @@
-package abtest_test
+package integration
 
 import (
 	"fmt"

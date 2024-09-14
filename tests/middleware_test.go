@@ -1,4 +1,4 @@
-package abtest_test
+package tests
 
 import (
 	"fmt"
@@ -28,10 +28,10 @@ func TestABTestMiddleware(t *testing.T) {
 	}))
 	defer v2Server.Close()
 
-	config := &abtest.Config{
+	config := &Config{
 		V1Backend: v1Server.URL,
 		V2Backend: v2Server.URL,
-		Rules: []abtest.RoutingRule{
+		Rules: []RoutingRule{
 			{
 				Path:     "/test",
 				Method:   "GET",
@@ -49,7 +49,7 @@ func TestABTestMiddleware(t *testing.T) {
 				Method:   "POST",
 				Backend:  v2Server.URL,
 				Priority: 3,
-				Conditions: []abtest.RuleCondition{
+				Conditions: []RuleCondition{
 					{
 						Type:      "form",
 						Parameter: "amount",
@@ -99,7 +99,7 @@ func TestABTestMiddleware(t *testing.T) {
 		_, _ = w.Write([]byte("Next handler"))
 	})
 
-	middleware, err := abtest.NewABTest(next, config, "test-abtest")
+	middleware, err := NewABTest(next, config, "test-abtest")
 	if err != nil {
 		t.Fatalf("Failed to create AB test middleware: %v", err)
 	}
@@ -159,10 +159,10 @@ func TestABTestMiddleware(t *testing.T) {
 }
 
 func TestGradualRollout(t *testing.T) {
-	v1Server := abtest_testing.NewV1TestServer()
+	v1Server := NewV1TestServer()
 	defer v1Server.Close()
 
-	v2Server := abtest_testing.NewV2TestServer()
+	v2Server := NewV2TestServer()
 	defer v2Server.Close()
 
 	config := &abtest.Config{
