@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"io"
 	"log"
 	"net/http"
