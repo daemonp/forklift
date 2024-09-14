@@ -28,11 +28,10 @@ var (
 
 // Config holds the configuration for the AB testing middleware.
 type Config struct {
-	V1Backend string        `json:"v1Backend,omitempty"`
-	V2Backend string        `json:"v2Backend,omitempty"`
-	Rules     []RoutingRule `json:"rules,omitempty"`
-	Debug     bool
-	Logger    Logger
+	DefaultBackend string        `json:"defaultBackend,omitempty"`
+	Rules          []RoutingRule `json:"rules,omitempty"`
+	Debug          bool
+	Logger         Logger
 }
 
 const (
@@ -52,7 +51,6 @@ type RoutingRule struct {
 	Method            string          `json:"method,omitempty"`
 	Conditions        []RuleCondition `json:"conditions,omitempty"`
 	Backend           string          `json:"backend,omitempty"`
-	Percentage        float64         `json:"percentage,omitempty"`
 	Priority          int             `json:"priority,omitempty"`
 	PathPrefixRewrite string          `json:"pathPrefixRewrite,omitempty"`
 }
@@ -85,11 +83,10 @@ type RuleEngine struct {
 // CreateConfig creates a new Config.
 func CreateConfig() *Config {
 	return &Config{
-		Debug:     os.Getenv("DEBUG") == "true",
-		Logger:    NewDefaultLogger(),
-		V1Backend: "http://localhost:8080", // Default V1 backend
-		V2Backend: "http://localhost:8081", // Default V2 backend
-		Rules:     []RoutingRule{},         // Initialize empty rules slice
+		Debug:          os.Getenv("DEBUG") == "true",
+		Logger:         NewDefaultLogger(),
+		DefaultBackend: "http://localhost:8080", // Default backend
+		Rules:          []RoutingRule{},         // Initialize empty rules slice
 	}
 }
 
@@ -110,16 +107,8 @@ func NewForklift(next http.Handler, config *Config, name string) (*Forklift, err
 	if config == nil {
 		return nil, errEmptyConfig
 	}
-	if config.V1Backend == "" {
-		return nil, errMissingV1Backend
-	}
-	if config.V2Backend == "" {
-		return nil, errMissingV2Backend
-	}
-	for _, rule := range config.Rules {
-		if rule.Percentage < 0 || rule.Percentage > 100 {
-			return nil, errInvalidPercentage
-		}
+	if config.DefaultBackend == "" {
+		return nil, errMissingDefaultBackend
 	}
 
 	// Sort rules by priority (higher priority first)
@@ -214,19 +203,15 @@ func (a *Forklift) handleSessionID(rw http.ResponseWriter, req *http.Request) st
 	return sessionID
 }
 
-func (a *Forklift) selectBackend(req *http.Request, sessionID string) string {
-	backend := a.config.V1Backend
+func (a *Forklift) selectBackend(req *http.Request) string {
 	for _, rule := range a.config.Rules {
 		if a.ruleEngine.ruleMatches(req, rule) {
 			if rule.Backend != "" {
-				backend = rule.Backend
-			} else if a.ruleEngine.shouldRouteToV2(sessionID, rule.Percentage) {
-				backend = a.config.V2Backend
+				return rule.Backend
 			}
-			break
 		}
 	}
-	return backend
+	return a.config.DefaultBackend
 }
 
 func (a *Forklift) createProxyRequest(req *http.Request, backend string) (*http.Request, error) {

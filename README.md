@@ -29,8 +29,7 @@ This Traefik middleware plugin enables advanced A/B testing and traffic routing 
 
 The middleware supports the following configuration options:
 
--   `v1Backend`: The default backend URL
--   `v2Backend`: The new version backend URL
+-   `defaultBackend`: The default backend URL to use when no rule matches
 -   `rules`: An array of routing rules
     -   `path`: The exact request path to match
     -   `pathPrefix`: A prefix to match for the request path
@@ -42,7 +41,6 @@ The middleware supports the following configuration options:
         -   `operator`: Comparison operator ("eq", "ne", "gt", "lt", "contains", "regex")
         -   `value`: The value to compare against
     -   `backend`: The backend URL to route to if the rule matches
-    -   `percentage`: (Optional) Percentage of matching traffic to route to the specified backend
     -   `priority`: (Optional) Priority of the rule (higher numbers have higher priority)
     -   `pathPrefixRewrite`: (Optional) The new path prefix to rewrite the request to
 
@@ -92,18 +90,17 @@ services:
             - "traefik.http.routers.abtest.rule=PathPrefix(`/`)"
             - "traefik.http.routers.abtest.entrypoints=web"
             - "traefik.http.routers.abtest.middlewares=abtest-middleware"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.v1backend=http://echo1:5678"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.v2backend=http://echo2:5678"
+            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.defaultBackend=http://echo1:5678"
             - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].path=/"
             - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].method=GET"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].percentage=50"
+            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].backend=http://echo2:5678"
             - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].path=/"
             - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].method=POST"
             - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].conditions[0].type=form"
             - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].conditions[0].parameter=MID"
             - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].conditions[0].operator=eq"
             - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].conditions[0].value=a"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].percentage=100"
+            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].backend=http://echo2:5678"
             - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].path=/query-test"
             - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].method=GET"
             - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].conditions[0].type=query"
@@ -115,9 +112,9 @@ services:
 
 This configuration demonstrates several use cases:
 
-1. Basic A/B testing with a 50/50 split for GET requests to the root path.
-2. Routing all POST requests with a specific form parameter to V2.
-3. Routing GET requests with a specific query parameter to V2.
+1. Routing GET requests to the root path to a specific backend.
+2. Routing POST requests with a specific form parameter to a different backend.
+3. Routing GET requests with a specific query parameter to a specific backend.
 
 ### Kubernetes
 
@@ -131,12 +128,11 @@ metadata:
 spec:
     plugin:
         abtest:
-            v1Backend: "http://v1-service"
-            v2Backend: "http://v2-service"
+            defaultBackend: "http://default-service"
             rules:
                 - path: "/"
                   method: "GET"
-                  percentage: 50
+                  backend: "http://v2-service"
                 - path: "/"
                   method: "POST"
                   conditions:
@@ -144,7 +140,7 @@ spec:
                         parameter: "MID"
                         operator: "eq"
                         value: "a"
-                  percentage: 100
+                  backend: "http://v2-service"
                 - path: "/query-test"
                   method: "GET"
                   conditions:

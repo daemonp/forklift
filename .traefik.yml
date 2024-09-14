@@ -3,10 +3,11 @@ type: middleware
 import: github.com/daemonp/forklift
 summary: A middleware for A/B testing in Traefik
 testData:
-  V1Backend: "http://v1-backend.example.com"
-  V2Backend: "http://v2-backend.example.com"
+  DefaultBackend: "http://default-backend.example.com"
   Rules:
     - Path: "/test"
       Method: "GET"
       Backend: "http://v1-backend.example.com"
-      Percentage: 50
+    - Path: "/test2"
+      Method: "GET"
+      Backend: "http://v2-backend.example.com"

@@ -31,8 +31,7 @@ func TestForkliftMiddleware(t *testing.T) {
 	defer v2Server.Close()
 
 	config := &forklift.Config{
-		V1Backend: v1Server.URL,
-		V2Backend: v2Server.URL,
+		DefaultBackend: v1Server.URL,
 		Rules: []forklift.RoutingRule{
 			{
 				Path:     "/test",
@@ -75,11 +74,10 @@ func TestForkliftMiddleware(t *testing.T) {
 				},
 			},
 			{
-				Path:       "/gradual-rollout",
-				Method:     "GET",
-				Backend:    v2Server.URL,
-				Percentage: 0.5,
-				Priority:   5,
+				Path:     "/gradual-rollout",
+				Method:   "GET",
+				Backend:  v2Server.URL,
+				Priority: 5,
 			},
 			{
 				Path:     "/priority-test",
