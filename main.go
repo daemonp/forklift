@@ -246,17 +246,25 @@ func (a *Forklift) selectWeightedBackend(sessionID string, rules []*RoutingRule)
 
 	rule := rules[0]
 	backends := strings.Split(rule.Backend, ",")
-	weights := strings.Split(strconv.Itoa(rule.Weight), ",")
+	weights := make([]int, len(backends))
 
-	if len(backends) != len(weights) {
-		a.logger.Printf("Error: number of backends (%d) does not match number of weights (%d)", len(backends), len(weights))
-		return a.config.DefaultBackend
+	if rule.Weight > 0 {
+		// If a single weight is provided, distribute it among the backends
+		remainingWeight := 100 - rule.Weight
+		weights[0] = rule.Weight
+		for i := 1; i < len(backends); i++ {
+			weights[i] = remainingWeight / (len(backends) - 1)
+		}
+	} else {
+		// If no weight is provided, distribute evenly
+		for i := range backends {
+			weights[i] = 100 / len(backends)
+		}
 	}
 
 	totalWeight := 0
 	for _, w := range weights {
-		weight, _ := strconv.Atoi(w)
-		totalWeight += weight
+		totalWeight += w
 	}
 
 	// Use the session ID to deterministically select a backend
@@ -266,8 +274,7 @@ func (a *Forklift) selectWeightedBackend(sessionID string, rules []*RoutingRule)
 
 	cumulativeWeight := 0.0
 	for i, w := range weights {
-		weight, _ := strconv.Atoi(w)
-		cumulativeWeight += float64(weight) / float64(totalWeight)
+		cumulativeWeight += float64(w) / float64(totalWeight)
 		if randomValue < cumulativeWeight {
 			return backends[i]
 		}

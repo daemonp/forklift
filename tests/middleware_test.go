@@ -819,11 +819,15 @@ func TestThreeBackendsSplitRouting(t *testing.T) {
 		"Backend3":   0.1,
 	}
 
+	tolerance := 0.02 // 2% tolerance for statistical variation
+
 	for backend, count := range counts {
 		ratio := float64(count) / float64(totalRequests)
 		expectedRatio := expectedRatios[backend]
-		if math.Abs(ratio-expectedRatio) > 0.02 {
-			t.Errorf("Expected ratio for %s to be close to %.2f, but got %.2f", backend, expectedRatio, ratio)
+		if math.Abs(ratio-expectedRatio) > tolerance {
+			t.Errorf("Expected ratio for %s to be close to %.2f (±%.2f), but got %.2f", backend, expectedRatio, tolerance, ratio)
+		} else {
+			t.Logf("Ratio for %s: %.2f (expected: %.2f ±%.2f)", backend, ratio, expectedRatio, tolerance)
 		}
 	}
 }
