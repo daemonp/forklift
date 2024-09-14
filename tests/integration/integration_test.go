@@ -160,7 +160,7 @@ func TestGradualRolloutIntegration(t *testing.T) {
 	client := &http.Client{}
 
 	for i := 0; i < totalRequests; i++ {
-		req, err := http.NewRequest("GET", traefikURL+"/", nil)
+		req, err := http.NewRequest("GET", traefikURL+"/gradual", nil)
 		if err != nil {
 			t.Fatalf("Failed to create request: %v", err)
 		}
