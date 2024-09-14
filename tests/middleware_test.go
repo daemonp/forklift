@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	//abtest_testing "github.com/daemonp/traefik-forklift-middleware/abtest/testing"
 )
 
 const sessionCookieName = "abtest_session_id"
@@ -28,10 +27,10 @@ func TestABTestMiddleware(t *testing.T) {
 	}))
 	defer v2Server.Close()
 
-	config := &Config{
+	config := &abtest.Config{
 		V1Backend: v1Server.URL,
 		V2Backend: v2Server.URL,
-		Rules: []RoutingRule{
+		Rules: []abtest.RoutingRule{
 			{
 				Path:     "/test",
 				Method:   "GET",
@@ -49,7 +48,7 @@ func TestABTestMiddleware(t *testing.T) {
 				Method:   "POST",
 				Backend:  v2Server.URL,
 				Priority: 3,
-				Conditions: []RuleCondition{
+				Conditions: []abtest.RuleCondition{
 					{
 						Type:      "form",
 						Parameter: "amount",
@@ -99,7 +98,7 @@ func TestABTestMiddleware(t *testing.T) {
 		_, _ = w.Write([]byte("Next handler"))
 	})
 
-	middleware, err := NewABTest(next, config, "test-abtest")
+	middleware, err := abtest.NewABTest(next, config, "test-abtest")
 	if err != nil {
 		t.Fatalf("Failed to create AB test middleware: %v", err)
 	}
