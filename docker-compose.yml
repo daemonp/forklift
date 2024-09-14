@@ -77,6 +77,13 @@ services:
       - "traefik.enable=true"
       - "traefik.http.services.echo7.loadbalancer.server.port=5678"
 
+  default:
+    image: hashicorp/http-echo
+    command: ["-text", "Hello from Default"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.default.loadbalancer.server.port=5678"
+
   abtest:
     image: traefik/whoami
     labels:
