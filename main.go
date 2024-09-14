@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"hash/fnv"
 	"io"
 	"log"
 	"net/http"
@@ -405,7 +404,6 @@ func parseFloats(s1, s2 string) (float64, float64) {
 	f2, _ := strconv.ParseFloat(s2, 64)
 	return f1, f2
 }
-
 
 // cleanupCache periodically removes old entries from the cache.
 func (re *RuleEngine) cleanupCache() {
