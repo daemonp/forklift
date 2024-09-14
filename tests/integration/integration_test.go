@@ -195,7 +195,7 @@ func TestGradualRolloutIntegration(t *testing.T) {
 	// Chi-square test for equal distribution
 	expected := float64(totalRequests) / 2
 	chiSquare := math.Pow(float64(v1Count)-expected, 2)/expected + math.Pow(float64(v2Count)-expected, 2)/expected
-	pValue := 1 - chi2.Cdf(chiSquare, 1)
+	pValue := 1 - chi2.CDF(chiSquare)
 
 	fmt.Printf("Chi-square statistic: %.4f, p-value: %.4f\n", chiSquare, pValue)
 
