@@ -765,6 +765,85 @@ func TestZeroAndHundredPercentRouting(t *testing.T) {
 // TestSpecialCharactersInURLsAndHeaders and TestErrorHandlingInBackendRequests
 // have been removed to avoid duplicate declarations
 
+func TestThreeBackendsSplitRouting(t *testing.T) {
+	backend1 := NewV1TestServer()
+	defer backend1.Close()
+
+	backend2 := NewV2TestServer()
+	defer backend2.Close()
+
+	backend3 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("Backend3"))
+	}))
+	defer backend3.Close()
+
+	config := &forklift.Config{
+		DefaultBackend: backend1.URL,
+		Rules: []forklift.RoutingRule{
+			{
+				Path:    "/test",
+				Method:  "GET",
+				Backend: backend2.URL,
+				Conditions: []forklift.RuleCondition{
+					{
+						Type:     "SessionID",
+						Operator: "lt",
+						Value:    "0.1",
+					},
+				},
+			},
+			{
+				Path:    "/test",
+				Method:  "GET",
+				Backend: backend3.URL,
+				Conditions: []forklift.RuleCondition{
+					{
+						Type:     "SessionID",
+						Operator: "lt",
+						Value:    "0.2",
+					},
+				},
+			},
+		},
+	}
+
+	next := http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		t.Error("Next handler should not be called")
+	})
+
+	middleware, err := forklift.NewForklift(next, config, "test-forklift")
+	if err != nil {
+		t.Fatalf("Failed to create Forklift test middleware: %v", err)
+	}
+
+	counts := make(map[string]int)
+	totalRequests := 1000
+
+	for i := 0; i < totalRequests; i++ {
+		req, _ := http.NewRequest(http.MethodGet, "/test", nil)
+		rr := httptest.NewRecorder()
+
+		middleware.ServeHTTP(rr, req)
+
+		counts[strings.TrimSpace(rr.Body.String())]++
+	}
+
+	expectedRatios := map[string]float64{
+		"V1 Backend": 0.8,
+		"V2 Backend": 0.1,
+		"Backend3":   0.1,
+	}
+
+	for backend, count := range counts {
+		ratio := float64(count) / float64(totalRequests)
+		expectedRatio := expectedRatios[backend]
+		if math.Abs(ratio-expectedRatio) > 0.05 {
+			t.Errorf("Expected ratio for %s to be close to %.2f, but got %.2f", backend, expectedRatio, ratio)
+		}
+	}
+}
+
 func TestSelectBackend(t *testing.T) {
 	v1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
