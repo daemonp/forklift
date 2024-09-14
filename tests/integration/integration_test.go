@@ -148,13 +148,7 @@ func updateSessionID(t *testing.T, resp *http.Response, sessionID *string) {
 }
 
 func TestGradualRolloutIntegration(t *testing.T) {
-	v1Count := 0
-	v2Count := 0
-	v3Count := 0
-	v4Count := 0
-	v5Count := 0
-	v6Count := 0
-	v7Count := 0
+	backendCounts := make(map[string]int)
 	totalRequests := 10000
 
 	client := &http.Client{}
@@ -180,54 +174,27 @@ func TestGradualRolloutIntegration(t *testing.T) {
 		}
 		resp.Body.Close()
 
-		switch {
-		case strings.Contains(string(body), "Hello from V1"):
-			v1Count++
-		case strings.Contains(string(body), "Hello from V2"):
-			v2Count++
-		case strings.Contains(string(body), "Hello from V3"):
-			v3Count++
-		case strings.Contains(string(body), "Hello from V4"):
-			v4Count++
-		case strings.Contains(string(body), "Hello from V5"):
-			v5Count++
-		case strings.Contains(string(body), "Hello from V6"):
-			v6Count++
-		case strings.Contains(string(body), "Hello from V7"):
-			v7Count++
-		default:
-			t.Errorf("Unexpected response body: %s", string(body))
-		}
+		backendCounts[string(body)]++
 
 		// Add a small delay to avoid overwhelming the server
 		time.Sleep(1 * time.Millisecond)
 	}
 
-	v1Percentage := float64(v1Count) / float64(totalRequests) * 100
-	v2Percentage := float64(v2Count) / float64(totalRequests) * 100
-	v3Percentage := float64(v3Count) / float64(totalRequests) * 100
-	v4Percentage := float64(v4Count) / float64(totalRequests) * 100
-	v5Percentage := float64(v5Count) / float64(totalRequests) * 100
-	v6Percentage := float64(v6Count) / float64(totalRequests) * 100
-	v7Percentage := float64(v7Count) / float64(totalRequests) * 100
-
-	fmt.Printf("V1 count: %d (%.2f%%)\n", v1Count, v1Percentage)
-	fmt.Printf("V2 count: %d (%.2f%%)\n", v2Count, v2Percentage)
-	fmt.Printf("V3 count: %d (%.2f%%)\n", v3Count, v3Percentage)
-	fmt.Printf("V4 count: %d (%.2f%%)\n", v4Count, v4Percentage)
-	fmt.Printf("V5 count: %d (%.2f%%)\n", v5Count, v5Percentage)
-	fmt.Printf("V6 count: %d (%.2f%%)\n", v6Count, v6Percentage)
-	fmt.Printf("V7 count: %d (%.2f%%)\n", v7Count, v7Percentage)
+	for i := 1; i <= 7; i++ {
+		backendName := fmt.Sprintf("Hello from V%d", i)
+		count := backendCounts[backendName]
+		percentage := float64(count) / float64(totalRequests) * 100
+		fmt.Printf("%s count: %d (%.2f%%)\n", backendName, count, percentage)
+	}
 
 	// Chi-square test for equal distribution
 	expected := float64(totalRequests) / 7
-	chiSquare := math.Pow(float64(v1Count)-expected, 2)/expected +
-		math.Pow(float64(v2Count)-expected, 2)/expected +
-		math.Pow(float64(v3Count)-expected, 2)/expected +
-		math.Pow(float64(v4Count)-expected, 2)/expected +
-		math.Pow(float64(v5Count)-expected, 2)/expected +
-		math.Pow(float64(v6Count)-expected, 2)/expected +
-		math.Pow(float64(v7Count)-expected, 2)/expected
+	chiSquare := 0.0
+	for i := 1; i <= 7; i++ {
+		backendName := fmt.Sprintf("Hello from V%d", i)
+		count := float64(backendCounts[backendName])
+		chiSquare += math.Pow(count-expected, 2) / expected
+	}
 
 	pValue := 1 - chi2.CDF(chiSquare)
 
@@ -241,14 +208,13 @@ func TestGradualRolloutIntegration(t *testing.T) {
 	}
 
 	// Check if the distribution is within a reasonable range (12-18%)
-	if v1Percentage < 12 || v1Percentage > 18 ||
-		v2Percentage < 12 || v2Percentage > 18 ||
-		v3Percentage < 12 || v3Percentage > 18 ||
-		v4Percentage < 12 || v4Percentage > 18 ||
-		v5Percentage < 12 || v5Percentage > 18 ||
-		v6Percentage < 12 || v6Percentage > 18 ||
-		v7Percentage < 12 || v7Percentage > 18 {
-		t.Errorf("Distribution is outside the expected range (12-18%%)")
+	for i := 1; i <= 7; i++ {
+		backendName := fmt.Sprintf("Hello from V%d", i)
+		count := backendCounts[backendName]
+		percentage := float64(count) / float64(totalRequests) * 100
+		if percentage < 12 || percentage > 18 {
+			t.Errorf("%s distribution is outside the expected range (12-18%%): %.2f%%", backendName, percentage)
+		}
 	}
 }
 
