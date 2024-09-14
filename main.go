@@ -260,11 +260,11 @@ func (a *Forklift) selectWeightedBackend(sessionID string, rules []*RoutingRule)
 	// Use the session ID to deterministically select a backend
 	hash := fnv.New32a()
 	hash.Write([]byte(sessionID))
-	randomValue := float64(hash.Sum32()) / float64(uint32(^uint32(0)))
+	randomValue := int(hash.Sum32()) % totalWeight
 
-	cumulativeWeight := 0.0
+	cumulativeWeight := 0
 	for i, w := range weights {
-		cumulativeWeight += float64(w) / float64(totalWeight)
+		cumulativeWeight += w
 		if randomValue < cumulativeWeight {
 			return backends[i]
 		}
