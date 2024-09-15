@@ -207,7 +207,7 @@ func TestForkliftMiddleware(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := createTestRequest(t, tt.method, tt.path, tt.headers, tt.body)
-			
+
 			// Add Cookies to the request
 			for _, cookie := range tt.cookies {
 				req.AddCookie(cookie)
