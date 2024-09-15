@@ -244,18 +244,18 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 
 	// Apply percentage-based routing if applicable
 	for _, rule := range matchingRules {
-		if rule.Percentage > 0 && rule.Percentage < 100 {
+		if rule.Percentage > 0 {
 			if a.shouldApplyPercentage(sessionID, rule.Percentage) {
 				return selectedBackend{Backend: rule.Backend, Rule: &rule}
 			}
 		} else {
-			// If no percentage or 100%, select this rule
+			// If no percentage, select this rule
 			return selectedBackend{Backend: rule.Backend, Rule: &rule}
 		}
 	}
 
-	// If no rule was selected, use the highest priority matching rule
-	return selectedBackend{Backend: matchingRules[0].Backend, Rule: &matchingRules[0]}
+	// If no rule was selected, use the default backend
+	return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
 }
 
 func (a *Forklift) shouldApplyPercentage(sessionID string, percentage float64) bool {
@@ -457,6 +457,10 @@ func (re *RuleEngine) ruleMatches(req *http.Request, rule RoutingRule) bool {
 	}
 	if re.config.Debug {
 		re.logger.Debugf("Checking conditions for path: %s", req.URL.Path)
+	}
+	// If there are no conditions, return true if we've made it this far
+	if len(rule.Conditions) == 0 {
+		return true
 	}
 	return re.checkConditions(req, rule.Conditions)
 }

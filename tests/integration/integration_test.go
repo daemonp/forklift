@@ -34,6 +34,12 @@ func TestIntegration(t *testing.T) {
 			expectedBodies: []string{"Hello from V1", "Hello from V2"},
 		},
 		{
+			name:           "GET /v2 should route to echo2",
+			path:           "/v2",
+			method:         "GET",
+			expectedBodies: []string{"Hello from V2"},
+		},
+		{
 			name:           "GET /v3 should route to echo3",
 			path:           "/v3",
 			method:         "GET",
@@ -48,6 +54,16 @@ func TestIntegration(t *testing.T) {
 				"Content-Type": "application/x-www-form-urlencoded",
 			},
 			expectedBodies: []string{"Hello from V2"},
+		},
+		{
+			name:   "POST / with MID=d should route to echo3",
+			path:   "/",
+			method: "POST",
+			body:   "MID=d",
+			headers: map[string]string{
+				"Content-Type": "application/x-www-form-urlencoded",
+			},
+			expectedBodies: []string{"Hello from V3"},
 		},
 		{
 			name:           "GET /query-test?mid=two should route to echo2",
