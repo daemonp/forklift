@@ -275,21 +275,20 @@ func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backen
 	var cumulativePercentage float64
 	for _, backend := range backends {
 		cumulativePercentage += backendPercentages[backend]
-		if scaledHashValue <= cumulativePercentage {
+		if scaledHashValue < cumulativePercentage {
 			if a.config.Debug {
-				a.logger.Debugf("Selected backend: %s (hash value: %f, scaled hash value: %f)", backend, hashValue, scaledHashValue)
+				a.logger.Debugf("Selected backend: %s (hash value: %f, scaled hash value: %f, cumulative percentage: %f)", backend, hashValue, scaledHashValue, cumulativePercentage)
 				a.logger.Debugf("Backend percentages: %v", backendPercentages)
 			}
 			return backend
 		}
 	}
 
-	// If no backend was selected (which shouldn't happen), return the last backend
-	lastBackend := backends[len(backends)-1]
+	// If no backend was selected, return the default backend
 	if a.config.Debug {
-		a.logger.Debugf("Fallback to last backend: %s", lastBackend)
+		a.logger.Debugf("No backend selected, using default: %s", a.config.DefaultBackend)
 	}
-	return lastBackend
+	return a.config.DefaultBackend
 }
 
 func (a *Forklift) sortBackends(backendPercentages map[string]float64) []string {
