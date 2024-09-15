@@ -21,56 +21,6 @@ func closeBody(t *testing.T, body io.Closer) {
 }
 
 func TestIntegration(t *testing.T) {
-	cfg := &config.Config{
-		DefaultBackend: "http://default-backend.example.com",
-		Rules: []config.RoutingRule{
-			{
-				Path:       "/",
-				Method:     "GET",
-				Backend:    "http://echo1.example.com",
-				Percentage: 50,
-			},
-			{
-				Path:       "/",
-				Method:     "GET",
-				Backend:    "http://echo2.example.com",
-				Percentage: 50,
-			},
-			{
-				Path:    "/v3",
-				Method:  "GET",
-				Backend: "http://echo3.example.com",
-			},
-			{
-				Path:    "/",
-				Method:  "POST",
-				Backend: "http://echo2.example.com",
-				Conditions: []config.RuleCondition{
-					{
-						Type:      "form",
-						Parameter: "MID",
-						Operator:  "eq",
-						Value:     "a",
-					},
-				},
-			},
-			{
-				Path:    "/query-test",
-				Method:  "GET",
-				Backend: "http://echo2.example.com",
-				Conditions: []config.RuleCondition{
-					{
-						Type:       "query",
-						QueryParam: "mid",
-						Operator:   "eq",
-						Value:      "two",
-					},
-				},
-			},
-		},
-		Debug: true,
-	}
-
 	tests := []struct {
 		name           string
 		path           string
