@@ -301,19 +301,23 @@ func (a *Forklift) sortBackends(backendPercentages map[string]float64) []string 
 
 func (a *Forklift) selectBackendFromRanges(backends []string, backendPercentages map[string]float64, hashValue float64) string {
 	cumulativeRanges := a.createCumulativeRanges(backends, backendPercentages)
+	a.logger.Debugf("Cumulative ranges: %v", cumulativeRanges)
+	a.logger.Debugf("Hash value: %f", hashValue)
+
+	var selectedBackend string
 	for _, backend := range backends {
 		if hashValue <= cumulativeRanges[backend] {
-			if a.config.Debug {
-				a.logger.Debugf("Selected backend %s for hash value %f (cumulative range: %f)", backend, hashValue, cumulativeRanges[backend])
-			}
-			return backend
+			selectedBackend = backend
+			break
 		}
 	}
-	defaultBackend := backends[len(backends)-1]
-	if a.config.Debug {
-		a.logger.Debugf("Defaulting to last backend %s for hash value %f", defaultBackend, hashValue)
+
+	if selectedBackend == "" {
+		selectedBackend = backends[len(backends)-1] // Default to the last backend if no match
 	}
-	return defaultBackend // Default to the last backend if no match
+
+	a.logger.Debugf("Selected backend: %s", selectedBackend)
+	return selectedBackend
 }
 
 func (a *Forklift) createCumulativeRanges(backends []string, backendPercentages map[string]float64) map[string]float64 {
@@ -331,6 +335,10 @@ func (a *Forklift) createCumulativeRanges(backends []string, backendPercentages 
 			ranges[backend] *= factor
 		}
 	}
+
+	a.logger.Debugf("Backend percentages: %v", backendPercentages)
+	a.logger.Debugf("Cumulative ranges: %v", ranges)
+
 	return ranges
 }
 
@@ -346,7 +354,7 @@ func (a *Forklift) calculateHash(sessionID string, matchingRules []RoutingRule) 
 		}
 	}
 
-	hashValue := float64(h.Sum64() % hashModulo) / hashDivisor
+	hashValue := float64(h.Sum64()) / float64(^uint64(0)) * 100.0
 	if a.config.Debug {
 		a.logger.Debugf("Calculated hash value: %f", hashValue)
 	}
