@@ -262,9 +262,13 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 
 func (a *Forklift) shouldApplyPercentage(sessionID string, percentage float64) bool {
 	h := fnv.New32a()
-	h.Write([]byte(sessionID))
+	_, err := h.Write([]byte(sessionID))
+	if err != nil {
+		a.logger.Errorf("Error hashing session ID: %v", err)
+		return false
+	}
 	hashValue := h.Sum32()
-	normalizedHash := float64(hashValue) / float64(^uint32(0))
+	normalizedHash := float64(hashValue % 100) / 100.0
 	result := normalizedHash < percentage/100.0
 	if a.config.Debug {
 		a.logger.Debugf("Session ID: %s, Percentage: %.2f, Normalized Hash: %.4f, Result: %v", sessionID, percentage, normalizedHash, result)
@@ -457,6 +461,9 @@ func (re *RuleEngine) ruleMatches(req *http.Request, rule RoutingRule) bool {
 	// Check path prefix match
 	if rule.PathPrefix != "" {
 		if !strings.HasPrefix(req.URL.Path, rule.PathPrefix) {
+			if re.config.Debug {
+				re.logger.Debugf("Path prefix mismatch: %s for path: %s", rule.PathPrefix, req.URL.Path)
+			}
 			return false
 		}
 		if re.config.Debug {
@@ -524,7 +531,14 @@ func (re *RuleEngine) checkForm(req *http.Request, condition RuleCondition) bool
 
 func (re *RuleEngine) checkHeader(req *http.Request, condition RuleCondition) bool {
 	headerValue := req.Header.Get(condition.Parameter)
-	return compareValues(headerValue, condition.Operator, condition.Value)
+	if re.config.Debug {
+		re.logger.Debugf("Header %s value: %s", condition.Parameter, headerValue)
+	}
+	result := compareValues(headerValue, condition.Operator, condition.Value)
+	if re.config.Debug {
+		re.logger.Debugf("Header condition result: %v", result)
+	}
+	return result
 }
 
 func (re *RuleEngine) checkQuery(req *http.Request, condition RuleCondition) bool {
