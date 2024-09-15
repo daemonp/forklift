@@ -237,6 +237,11 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 		return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
 	}
 
+	// Sort matching rules by priority (higher priority first)
+	sort.Slice(matchingRules, func(i, j int) bool {
+		return matchingRules[i].Priority > matchingRules[j].Priority
+	})
+
 	// Apply percentage-based routing if applicable
 	for _, rule := range matchingRules {
 		if rule.Percentage > 0 && rule.Percentage < 100 {
@@ -249,7 +254,7 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 		}
 	}
 
-	// If no rule was selected, use the first matching rule
+	// If no rule was selected, use the highest priority matching rule
 	return selectedBackend{Backend: matchingRules[0].Backend, Rule: &matchingRules[0]}
 }
 
@@ -438,12 +443,15 @@ func (a *Forklift) sendProxyRequest(rw http.ResponseWriter, proxyReq *http.Reque
 
 // ruleMatches checks if a request matches a given rule.
 func (re *RuleEngine) ruleMatches(req *http.Request, rule RoutingRule) bool {
+	// Check exact path match
 	if rule.Path != "" && rule.Path != req.URL.Path {
 		return false
 	}
-	if rule.PathPrefix != "" && !matchPathPrefix(req.URL.Path, rule.PathPrefix) {
+	// Check path prefix match
+	if rule.PathPrefix != "" && !strings.HasPrefix(req.URL.Path, rule.PathPrefix) {
 		return false
 	}
+	// Check method match
 	if rule.Method != "" && rule.Method != req.Method {
 		return false
 	}
