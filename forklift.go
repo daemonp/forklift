@@ -275,7 +275,7 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) SelectedBa
 
 func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backendPercentages map[string]float64, matchingRules []RoutingRule) string {
 	// Sort backends to ensure consistent ordering
-	var backends []string
+	backends := make([]string, 0, len(backendPercentages))
 	for backend := range backendPercentages {
 		backends = append(backends, backend)
 	}
@@ -301,14 +301,29 @@ func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backen
 
 	// Use a consistent hash function
 	h := fnv.New64a()
-	h.Write([]byte(sessionID))
+	if _, err := h.Write([]byte(sessionID)); err != nil {
+		a.logger.Errorf("Error hashing session ID: %v", err)
+		return a.config.DefaultBackend
+	}
 	for _, rule := range matchingRules {
 		if rule.AffinityToken != "" {
-			h.Write([]byte(rule.AffinityToken))
+			if _, err := h.Write([]byte(rule.AffinityToken)); err != nil {
+				a.logger.Errorf("Error hashing affinity token: %v", err)
+				return a.config.DefaultBackend
+			}
 		} else {
-			h.Write([]byte(rule.Path))
-			h.Write([]byte(rule.Method))
-			h.Write([]byte(rule.Backend))
+			if _, err := h.Write([]byte(rule.Path)); err != nil {
+				a.logger.Errorf("Error hashing rule path: %v", err)
+				return a.config.DefaultBackend
+			}
+			if _, err := h.Write([]byte(rule.Method)); err != nil {
+				a.logger.Errorf("Error hashing rule method: %v", err)
+				return a.config.DefaultBackend
+			}
+			if _, err := h.Write([]byte(rule.Backend)); err != nil {
+				a.logger.Errorf("Error hashing rule backend: %v", err)
+				return a.config.DefaultBackend
+			}
 		}
 	}
 	hashValue := float64(h.Sum64()) / float64(^uint64(0))
@@ -329,16 +344,16 @@ func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backen
 // hashRoutingRule generates a hash for a RoutingRule
 func hashRoutingRule(rule RoutingRule) uint32 {
 	h := fnv.New32a()
-	h.Write([]byte(rule.Path))
-	h.Write([]byte(rule.PathPrefix))
-	h.Write([]byte(rule.Method))
-	h.Write([]byte(rule.Backend))
+	_, _ = h.Write([]byte(rule.Path))
+	_, _ = h.Write([]byte(rule.PathPrefix))
+	_, _ = h.Write([]byte(rule.Method))
+	_, _ = h.Write([]byte(rule.Backend))
 	for _, condition := range rule.Conditions {
-		h.Write([]byte(condition.Type))
-		h.Write([]byte(condition.Parameter))
-		h.Write([]byte(condition.QueryParam))
-		h.Write([]byte(condition.Operator))
-		h.Write([]byte(condition.Value))
+		_, _ = h.Write([]byte(condition.Type))
+		_, _ = h.Write([]byte(condition.Parameter))
+		_, _ = h.Write([]byte(condition.QueryParam))
+		_, _ = h.Write([]byte(condition.Operator))
+		_, _ = h.Write([]byte(condition.Value))
 	}
 	return h.Sum32()
 }
