@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"errors"
 	"fmt"
 	"hash"
 	"hash/fnv"
@@ -21,11 +22,11 @@ import (
 	"github.com/daemonp/forklift/logger"
 )
 
-// Alias RoutingRule config types cuz lazy.
-type (
-	RoutingRule   = config.RoutingRule
-	RuleCondition = config.RuleCondition
-)
+// RoutingRule is an alias for config.RoutingRule.
+type RoutingRule = config.RoutingRule
+
+// RuleCondition is an alias for config.RuleCondition.
+type RuleCondition = config.RuleCondition
 
 var (
 	errEmptyConfig           = errors.New("empty configuration")
@@ -81,11 +82,11 @@ func New(ctx context.Context, next http.Handler, cfg interface{}, name string) (
 
 	parsedConfig, ok := cfg.(*config.Config)
 	if !ok {
-		return nil, fmt.Errorf("invalid configuration type")
+		return nil, errors.New("invalid configuration type")
 	}
 
 	if parsedConfig.DefaultBackend == "" {
-		return nil, fmt.Errorf("DefaultBackend must be set")
+		return nil, errors.New("DefaultBackend must be set")
 	}
 
 	if parsedConfig.Debug {
@@ -449,7 +450,7 @@ func (re *RuleEngine) ruleMatches(req *http.Request, rule RoutingRule) bool {
 
 func (re *RuleEngine) matchPath(req *http.Request, rule RoutingRule) bool {
 	if rule.Path != "" && rule.Path != req.URL.Path {
-		re.logDebug("Path mismatch: %s != %s", rule.Path, req.URL.Path)
+		re.logDebugf("Path mismatch: %s != %s", rule.Path, req.URL.Path)
 		return false
 	}
 	if rule.PathPrefix != "" && !strings.HasPrefix(req.URL.Path, rule.PathPrefix) {
@@ -478,7 +479,7 @@ func (re *RuleEngine) matchConditions(req *http.Request, rule RoutingRule) bool 
 	return re.checkConditions(req, rule.Conditions)
 }
 
-func (re *RuleEngine) logDebug(format string, args ...interface{}) {
+func (re *RuleEngine) logDebugf(format string, args ...interface{}) {
 	if re.config.Debug {
 		re.logger.Debugf(format, args...)
 	}
