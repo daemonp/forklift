@@ -141,7 +141,8 @@ func runTest(t *testing.T, client *http.Client, tt struct {
 	body           string
 	headers        map[string]string
 	expectedBodies []string
-}) {
+},
+) {
 	t.Helper()
 	req, err := createRequest(tt.method, traefikURL+tt.path, tt.body)
 	if err != nil {
