@@ -50,6 +50,8 @@ const (
 	fullPercentage       = 100.0
 	hashModulo           = 10000
 	hashDivisor          = 100.0
+	sessionIDByteLength  = 32
+	maxPercentage        = 100.0
 )
 
 // Forklift is the main struct for the middleware.
@@ -168,7 +170,7 @@ func NewForklift(_ context.Context, next http.Handler, cfg *config.Config, name 
 
 // generateSessionID creates a new random session ID.
 func generateSessionID() (string, error) {
-	b := make([]byte, 32)
+	b := make([]byte, sessionIDByteLength)
 	_, err := rand.Read(b)
 	if err != nil {
 		return "", err
@@ -311,7 +313,7 @@ func (a *Forklift) selectBackendFromRanges(backends []string, backendPercentages
 		totalPercentage += percentage
 	}
 
-	scaledHashValue := hashValue * (totalPercentage / 100.0)
+	scaledHashValue := hashValue * (totalPercentage / maxPercentage)
 
 	var selectedBackend string
 	for _, backend := range backends {
@@ -337,8 +339,8 @@ func (a *Forklift) createCumulativeRanges(backends []string, backendPercentages 
 		ranges[backend] = totalPercentage
 	}
 
-	if totalPercentage > 100 {
-		factor := 100 / totalPercentage
+	if totalPercentage > maxPercentage {
+		factor := maxPercentage / totalPercentage
 		for backend := range ranges {
 			ranges[backend] *= factor
 		}
@@ -359,7 +361,7 @@ func (a *Forklift) calculateHash(sessionID string, matchingRules []RoutingRule) 
 		}
 	}
 
-	hashValue := float64(h.Sum64()) / float64(^uint64(0)) * 100.0
+	hashValue := float64(h.Sum64()) / float64(^uint64(0)) * maxPercentage
 	if a.config.Debug {
 		a.logger.Debugf("Calculated hash value: %f", hashValue)
 	}
