@@ -10,6 +10,7 @@ import (
 type Logger interface {
 	Debugf(format string, args ...interface{})
 	Infof(format string, args ...interface{})
+	Warnf(format string, args ...interface{})
 	Errorf(format string, args ...interface{})
 }
 
@@ -30,6 +31,10 @@ func (s *simpleLogger) Debugf(format string, args ...interface{}) {
 
 func (s *simpleLogger) Infof(format string, args ...interface{}) {
 	s.logger.Printf("INFO: "+format, args...)
+}
+
+func (s *simpleLogger) Warnf(format string, args ...interface{}) {
+	s.logger.Printf("WARN: "+format, args...)
 }
 
 func (s *simpleLogger) Errorf(format string, args ...interface{}) {
