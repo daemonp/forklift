@@ -188,6 +188,10 @@ func (a *Forklift) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if a.config.Debug {
 		rw.Header().Set("X-Selected-Backend", backend)
 		a.logger.Debugf("Routing request to backend: %s", backend)
+		if selectedRule != nil {
+			a.logger.Debugf("Selected rule: Path: %s, Method: %s, Backend: %s, Percentage: %f", 
+				selectedRule.Path, selectedRule.Method, selectedRule.Backend, selectedRule.Percentage)
+		}
 	}
 
 	proxyReq, err := a.createProxyRequest(req, backend, selectedRule)
@@ -233,9 +237,27 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 		return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
 	}
 
-	// Select the first matching rule
-	selectedRule := matchingRules[0]
-	return selectedBackend{Backend: selectedRule.Backend, Rule: &selectedRule}
+	// Apply percentage-based routing if applicable
+	for _, rule := range matchingRules {
+		if rule.Percentage > 0 && rule.Percentage < 100 {
+			if a.shouldApplyPercentage(sessionID, rule.Percentage) {
+				return selectedBackend{Backend: rule.Backend, Rule: &rule}
+			}
+		} else {
+			// If no percentage or 100%, select this rule
+			return selectedBackend{Backend: rule.Backend, Rule: &rule}
+		}
+	}
+
+	// If no rule was selected, use the first matching rule
+	return selectedBackend{Backend: matchingRules[0].Backend, Rule: &matchingRules[0]}
+}
+
+func (a *Forklift) shouldApplyPercentage(sessionID string, percentage float64) bool {
+	h := fnv.New32a()
+	h.Write([]byte(sessionID))
+	hashValue := h.Sum32()
+	return float64(hashValue%100) < percentage
 }
 
 func (a *Forklift) getMatchingRules(req *http.Request) []RoutingRule {
