@@ -274,14 +274,22 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) SelectedBa
 }
 
 func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backendPercentages map[string]float64, matchingRules []RoutingRule) string {
-	// Sort backends to ensure consistent ordering
+	backends := a.sortBackends(backendPercentages)
+	ranges := a.createCumulativeRanges(backends, backendPercentages)
+	hashValue := a.calculateHash(sessionID, matchingRules)
+	return a.selectBackendFromRanges(backends, backendPercentages, hashValue)
+}
+
+func (a *Forklift) sortBackends(backendPercentages map[string]float64) []string {
 	backends := make([]string, 0, len(backendPercentages))
 	for backend := range backendPercentages {
 		backends = append(backends, backend)
 	}
 	sort.Strings(backends)
+	return backends
+}
 
-	// Create cumulative percentage ranges
+func (a *Forklift) createCumulativeRanges(backends []string, backendPercentages map[string]float64) map[string]float64 {
 	ranges := make(map[string]float64)
 	totalPercentage := 0.0
 	for _, backend := range backends {
@@ -290,45 +298,39 @@ func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backen
 		ranges[backend] = totalPercentage
 	}
 
-	// Normalize percentages if total exceeds 100
 	if totalPercentage > 100 {
 		factor := 100 / totalPercentage
 		for backend := range ranges {
 			ranges[backend] *= factor
 		}
-		totalPercentage = 100
 	}
+	return ranges
+}
 
-	// Use a consistent hash function
+func (a *Forklift) calculateHash(sessionID string, matchingRules []RoutingRule) float64 {
 	h := fnv.New64a()
-	if _, err := h.Write([]byte(sessionID)); err != nil {
-		a.logger.Errorf("Error hashing session ID: %v", err)
-		return a.config.DefaultBackend
-	}
+	a.writeToHash(h, []byte(sessionID))
+
 	for _, rule := range matchingRules {
 		if rule.AffinityToken != "" {
-			if _, err := h.Write([]byte(rule.AffinityToken)); err != nil {
-				a.logger.Errorf("Error hashing affinity token: %v", err)
-				return a.config.DefaultBackend
-			}
+			a.writeToHash(h, []byte(rule.AffinityToken))
 		} else {
-			if _, err := h.Write([]byte(rule.Path)); err != nil {
-				a.logger.Errorf("Error hashing rule path: %v", err)
-				return a.config.DefaultBackend
-			}
-			if _, err := h.Write([]byte(rule.Method)); err != nil {
-				a.logger.Errorf("Error hashing rule method: %v", err)
-				return a.config.DefaultBackend
-			}
-			if _, err := h.Write([]byte(rule.Backend)); err != nil {
-				a.logger.Errorf("Error hashing rule backend: %v", err)
-				return a.config.DefaultBackend
-			}
+			a.writeToHash(h, []byte(rule.Path), []byte(rule.Method), []byte(rule.Backend))
 		}
 	}
-	hashValue := float64(h.Sum64()) / float64(^uint64(0))
 
-	// Select backend based on where the hash falls in the cumulative ranges
+	return float64(h.Sum64()) / float64(^uint64(0))
+}
+
+func (a *Forklift) writeToHash(h hash.Hash64, data ...[]byte) {
+	for _, d := range data {
+		if _, err := h.Write(d); err != nil {
+			a.logger.Errorf("Error hashing data: %v", err)
+		}
+	}
+}
+
+func (a *Forklift) selectBackendFromRanges(backends []string, backendPercentages map[string]float64, hashValue float64) string {
 	cumulativePercentage := 0.0
 	for _, backend := range backends {
 		cumulativePercentage += backendPercentages[backend]
@@ -336,8 +338,6 @@ func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backen
 			return backend
 		}
 	}
-
-	// Fallback to default backend (should rarely happen)
 	return a.config.DefaultBackend
 }
 
