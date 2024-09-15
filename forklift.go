@@ -6,7 +6,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
-	"errors"
 	"fmt"
 	"hash"
 	"hash/fnv"
