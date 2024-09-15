@@ -174,7 +174,7 @@ func (a *Forklift) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	if a.config.Debug {
 		rw.Header().Set("X-Selected-Backend", backend)
-		a.logger.Printf("Routing request to backend: %s", backend)
+		a.logger.Debugf("Routing request to backend: %s", backend)
 	}
 
 	proxyReq, err := a.createProxyRequest(req, backend, selectedRule)
@@ -355,8 +355,8 @@ func (a *Forklift) createProxyRequest(req *http.Request, backend string, selecte
 	proxyReq.Host = proxyReq.URL.Host
 
 	if a.config.Debug {
-		a.logger.Printf("Final request URL: %s", proxyReq.URL.String())
-		a.logger.Printf("Final request headers: %v", proxyReq.Header)
+		a.logger.Debugf("Final request URL: %s", proxyReq.URL.String())
+		a.logger.Debugf("Final request headers: %v", proxyReq.Header)
 	}
 
 	return proxyReq, nil
@@ -549,8 +549,8 @@ func getOrCreateSessionID(rw http.ResponseWriter, req *http.Request) string {
 
 	sessionID, err := generateSessionID()
 	if err != nil {
-		// Note: This is using the standard log package, not the custom logger
-		log.Printf("Error generating session ID: %v", err)
+		// Use the custom logger instead of the standard log package
+		a.logger.Errorf("Error generating session ID: %v", err)
 		return ""
 	}
 
