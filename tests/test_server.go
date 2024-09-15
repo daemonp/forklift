@@ -12,10 +12,7 @@ import (
 	"github.com/daemonp/forklift"
 )
 
-const (
-	defaultBufferSize = 1024
-	fullPercentage    = 100.0
-)
+const defaultBufferSize = 1024
 
 // mockServer is a struct that holds a mock server and its associated response.
 type mockServer struct {
@@ -45,38 +42,6 @@ func (ms *mockServer) URL() string {
 	return ms.server.URL
 }
 
-// NewTestServer creates a new test server with the given handler.
-// Deprecated: Use newMockServer instead.
-func NewTestServer(handler http.HandlerFunc) *httptest.Server {
-	return httptest.NewServer(handler)
-}
-
-// NewV1TestServer creates a new test server simulating a V1 backend.
-// Deprecated: Use newMockServer instead.
-func NewV1TestServer() *httptest.Server {
-	return NewTestServer(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("V1 Backend"))
-	})
-}
-
-// NewV2TestServer creates a new test server simulating a V2 backend.
-// Deprecated: Use newMockServer instead.
-func NewV2TestServer() *httptest.Server {
-	return NewTestServer(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("V2 Backend"))
-	})
-}
-
-// NewTestServerWithPathRewrite creates a new test server that handles path prefix rewrites.
-// Deprecated: Use newMockServer with custom handler instead.
-func NewTestServerWithPathRewrite() *httptest.Server {
-	return NewTestServer(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("Received path: " + r.URL.Path))
-	})
-}
 
 // TestPathPrefixRewrite runs test cases for path prefix rewrites.
 func TestPathPrefixRewrite(t *testing.T) {
