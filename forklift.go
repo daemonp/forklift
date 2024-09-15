@@ -551,8 +551,8 @@ func getOrCreateSessionID(rw http.ResponseWriter, req *http.Request) string {
 
 	sessionID, err := generateSessionID()
 	if err != nil {
-		// Use the forklift logger instead of accessing it through 'a'
-		forklift.logger.Errorf("Error generating session ID: %v", err)
+		// Use the logger directly
+		logger.NewLogger("forklift").Errorf("Error generating session ID: %v", err)
 		return ""
 	}
 
