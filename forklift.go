@@ -264,7 +264,8 @@ func (a *Forklift) shouldApplyPercentage(sessionID string, percentage float64) b
 	h := fnv.New32a()
 	h.Write([]byte(sessionID))
 	hashValue := h.Sum32()
-	return float64(hashValue%10000) < percentage*100
+	normalizedHash := float64(hashValue) / float64(^uint32(0))
+	return normalizedHash < percentage/100.0
 }
 
 func (a *Forklift) getMatchingRules(req *http.Request) []RoutingRule {
