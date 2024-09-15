@@ -293,6 +293,16 @@ func (a *Forklift) sortBackends(backendPercentages map[string]float64) []string 
 	return backends
 }
 
+func (a *Forklift) selectBackendFromRanges(backends []string, backendPercentages map[string]float64, hashValue float64) string {
+	cumulativeRanges := a.createCumulativeRanges(backends, backendPercentages)
+	for _, backend := range backends {
+		if hashValue <= cumulativeRanges[backend] {
+			return backend
+		}
+	}
+	return backends[len(backends)-1] // Default to the last backend if no match
+}
+
 func (a *Forklift) createCumulativeRanges(backends []string, backendPercentages map[string]float64) map[string]float64 {
 	ranges := make(map[string]float64)
 	totalPercentage := 0.0
