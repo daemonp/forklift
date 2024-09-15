@@ -281,7 +281,13 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) SelectedBa
 func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backendPercentages map[string]float64, matchingRules []RoutingRule) string {
 	backends := a.sortBackends(backendPercentages)
 	hashValue := a.calculateHash(sessionID, matchingRules)
-	return a.selectBackendFromRanges(backends, backendPercentages, hashValue)
+	selectedBackend := a.selectBackendFromRanges(backends, backendPercentages, hashValue)
+	
+	if a.config.Debug {
+		a.logger.Debugf("Selected backend: %s (hash value: %f)", selectedBackend, hashValue)
+	}
+	
+	return selectedBackend
 }
 
 func (a *Forklift) sortBackends(backendPercentages map[string]float64) []string {
@@ -297,10 +303,17 @@ func (a *Forklift) selectBackendFromRanges(backends []string, backendPercentages
 	cumulativeRanges := a.createCumulativeRanges(backends, backendPercentages)
 	for _, backend := range backends {
 		if hashValue <= cumulativeRanges[backend] {
+			if a.config.Debug {
+				a.logger.Debugf("Selected backend %s for hash value %f (cumulative range: %f)", backend, hashValue, cumulativeRanges[backend])
+			}
 			return backend
 		}
 	}
-	return backends[len(backends)-1] // Default to the last backend if no match
+	defaultBackend := backends[len(backends)-1]
+	if a.config.Debug {
+		a.logger.Debugf("Defaulting to last backend %s for hash value %f", defaultBackend, hashValue)
+	}
+	return defaultBackend // Default to the last backend if no match
 }
 
 func (a *Forklift) createCumulativeRanges(backends []string, backendPercentages map[string]float64) map[string]float64 {
@@ -333,7 +346,11 @@ func (a *Forklift) calculateHash(sessionID string, matchingRules []RoutingRule) 
 		}
 	}
 
-	return float64(h.Sum64()) / float64(^uint64(0))
+	hashValue := float64(h.Sum64() % hashModulo) / hashDivisor
+	if a.config.Debug {
+		a.logger.Debugf("Calculated hash value: %f", hashValue)
+	}
+	return hashValue
 }
 
 func (a *Forklift) writeToHash(h hash.Hash64, data ...[]byte) {
