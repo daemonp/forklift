@@ -396,24 +396,23 @@ func (a *Forklift) buildCumulativePercentages(backendPercentages map[string]*bac
 }
 
 func (a *Forklift) selectBackendFromPercentages(backends []backendEntry, sessionID string) SelectedBackend {
-	h := fnv.New32a()
+	h := fnv.New64a()
 	_, err := h.Write([]byte(sessionID))
 	if err != nil {
 		a.logger.Errorf("Error hashing session ID: %v", err)
 		return SelectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
 	}
-	hashValue := h.Sum32()
-	
-	// Use the full range of uint32 for more consistent distribution
-	totalWeight := uint64(0)
+	hashValue := h.Sum64()
+
+	totalWeight := 0.0
 	for _, be := range backends {
-		totalWeight += uint64(be.UpperBound * 100) - uint64(be.LowerBound * 100)
+		totalWeight += be.UpperBound - be.LowerBound
 	}
-	
-	selection := uint64(hashValue) % totalWeight
-	
+
+	selection := float64(hashValue) / float64(^uint64(0)) * totalWeight
+
 	for _, be := range backends {
-		weight := uint64(be.UpperBound * 100) - uint64(be.LowerBound * 100)
+		weight := be.UpperBound - be.LowerBound
 		if selection < weight {
 			selectedRule := be.Info.Rules[0]
 			return SelectedBackend{
