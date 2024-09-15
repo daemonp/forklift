@@ -223,30 +223,39 @@ type selectedBackend struct {
 }
 
 func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBackend {
-	// Collect all matching rules
+	matchingRules := a.getMatchingRules(req)
+
+	if len(matchingRules) == 0 {
+		return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
+	}
+
+	backendPercentages := a.mapBackendsToPercentages(matchingRules)
+	totalPercentage := a.sumTotalPercentages(backendPercentages)
+
+	a.adjustPercentages(backendPercentages, &totalPercentage)
+
+	backends := a.buildCumulativePercentages(backendPercentages)
+
+	return a.selectBackendFromPercentages(backends, sessionID)
+}
+
+func (a *Forklift) getMatchingRules(req *http.Request) []RoutingRule {
 	matchingRules := []RoutingRule{}
 	for _, rule := range a.config.Rules {
 		if a.ruleEngine.ruleMatches(req, rule) {
 			matchingRules = append(matchingRules, rule)
 		}
 	}
+	return matchingRules
+}
 
-	// If no matching rules, use default backend
-	if len(matchingRules) == 0 {
-		return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
-	}
-
-	// Map backends to their percentages and collect their rules
-	type backendInfo struct {
-		Percentage float64
-		Rules      []*RoutingRule
-	}
+func (a *Forklift) mapBackendsToPercentages(matchingRules []RoutingRule) map[string]*backendInfo {
 	backendPercentages := make(map[string]*backendInfo)
 	for _, rule := range matchingRules {
 		backend := rule.Backend
 		percentage := rule.Percentage
-		if percentage <= 0 || percentage > 100 {
-			percentage = 100
+		if percentage <= 0 || percentage > fullPercentage {
+			percentage = fullPercentage
 		}
 		if _, exists := backendPercentages[backend]; !exists {
 			backendPercentages[backend] = &backendInfo{
@@ -257,16 +266,20 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 		backendPercentages[backend].Percentage += percentage
 		backendPercentages[backend].Rules = append(backendPercentages[backend].Rules, &rule)
 	}
+	return backendPercentages
+}
 
-	// Sum total percentages
+func (a *Forklift) sumTotalPercentages(backendPercentages map[string]*backendInfo) float64 {
 	totalPercentage := 0.0
 	for _, info := range backendPercentages {
 		totalPercentage += info.Percentage
 	}
+	return totalPercentage
+}
 
-	// If total percentage is less than 100, allocate remaining to default backend
-	if totalPercentage < fullPercentage {
-		remaining := fullPercentage - totalPercentage
+func (a *Forklift) adjustPercentages(backendPercentages map[string]*backendInfo, totalPercentage *float64) {
+	if *totalPercentage < fullPercentage {
+		remaining := fullPercentage - *totalPercentage
 		if _, exists := backendPercentages[a.config.DefaultBackend]; !exists {
 			backendPercentages[a.config.DefaultBackend] = &backendInfo{
 				Percentage: 0,
@@ -274,25 +287,17 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 			}
 		}
 		backendPercentages[a.config.DefaultBackend].Percentage += remaining
-		totalPercentage += remaining
+		*totalPercentage += remaining
 	}
 
-	// Normalize percentages if total > 100
-	if totalPercentage > fullPercentage {
+	if *totalPercentage > fullPercentage {
 		for _, info := range backendPercentages {
-			info.Percentage = info.Percentage * 100 / totalPercentage
+			info.Percentage = info.Percentage * fullPercentage / *totalPercentage
 		}
-		// We don't need to reassign totalPercentage here as it's not used afterwards
 	}
+}
 
-	// Build cumulative percentages
-	type backendEntry struct {
-		Backend    string
-		Info       *backendInfo
-		LowerBound float64
-		UpperBound float64
-	}
-	// Collect backends into a slice
+func (a *Forklift) buildCumulativePercentages(backendPercentages map[string]*backendInfo) []backendEntry {
 	backends := make([]backendEntry, 0, len(backendPercentages))
 	for backend, info := range backendPercentages {
 		backends = append(backends, backendEntry{
@@ -300,12 +305,10 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 			Info:    info,
 		})
 	}
-	// Sort backends by Backend URL to ensure consistent order
 	sort.Slice(backends, func(i, j int) bool {
 		return backends[i].Backend < backends[j].Backend
 	})
 
-	// Compute cumulative percentages
 	currentLower := 0.0
 	for i := range backends {
 		be := &backends[i]
@@ -314,7 +317,10 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 		currentLower = be.UpperBound
 	}
 
-	// Use session ID to select backend
+	return backends
+}
+
+func (a *Forklift) selectBackendFromPercentages(backends []backendEntry, sessionID string) selectedBackend {
 	h := fnv.New32a()
 	_, err := h.Write([]byte(sessionID))
 	if err != nil {
@@ -322,13 +328,11 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 		return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
 	}
 	hashValue := h.Sum32()
-	hashPercentage := float64(hashValue%hashModulo) / hashDivisor // Gives a value between 0.0 and 100.0
+	hashPercentage := float64(hashValue%hashModulo) / hashDivisor
 
-	// Select backend
 	for _, be := range backends {
 		if hashPercentage >= be.LowerBound && hashPercentage < be.UpperBound {
-			// Select the first rule associated with this backend
-			selectedRule := be.Info.Rules[0] // Get the first rule for simplicity
+			selectedRule := be.Info.Rules[0]
 			return selectedBackend{
 				Backend: be.Backend,
 				Rule:    selectedRule,
@@ -336,7 +340,6 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 		}
 	}
 
-	// If no backend selected, use default backend
 	return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
 }
 
