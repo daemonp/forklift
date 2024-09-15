@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -124,6 +125,7 @@ func TestForkliftMiddleware(t *testing.T) {
 		path             string
 		headers          map[string]string
 		body             url.Values
+		cookies          []*http.Cookie
 		expectedStatuses []int
 		expectedBodies   []string
 	}{
@@ -166,12 +168,44 @@ func TestForkliftMiddleware(t *testing.T) {
 			expectedStatuses: []int{http.StatusOK},
 			expectedBodies:   []string{"Default Backend"},
 		},
+		{
+			name:   "Cookie condition matching",
+			method: "GET",
+			path:   "/",
+			cookies: []*http.Cookie{
+				{Name: "user_segment", Value: "premium"},
+			},
+			expectedStatuses: []int{http.StatusOK},
+			expectedBodies:   []string{"Hello from V2"}, // Assuming a rule for premium users to echo2
+		},
+		{
+			name:   "Header condition matching",
+			method: "GET",
+			path:   "/",
+			headers: map[string]string{
+				"X-User-Type": "beta",
+			},
+			expectedStatuses: []int{http.StatusOK},
+			expectedBodies:   []string{"Hello from V3"}, // Assuming a rule for beta users to echo3
+		},
+		{
+			name:             "Path prefix condition matching",
+			method:           "GET",
+			path:             "/api/users",
+			expectedStatuses: []int{http.StatusOK},
+			expectedBodies:   []string{"Hello from V2"}, // Assuming a rule for /api prefix to echo2
+		},
 	}
 
 	// client := &http.Client{}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Add Cookies to the request
+			for _, cookie := range tt.cookies {
+				req.AddCookie(cookie)
+			}
+
 			req := createTestRequest(t, tt.method, tt.path, tt.headers, tt.body)
 			rr := httptest.NewRecorder()
 			middleware.ServeHTTP(rr, req)
