@@ -270,8 +270,8 @@ func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backen
 		totalPercentage += percentage
 	}
 
-	scaledHashValue := hashValue * (totalPercentage / 100.0)
-	
+	scaledHashValue := hashValue * totalPercentage
+
 	var cumulativePercentage float64
 	for _, backend := range backends {
 		cumulativePercentage += backendPercentages[backend]
