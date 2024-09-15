@@ -31,6 +31,8 @@ var (
 	errEmptyConfig           = errors.New("empty configuration")
 	errMissingDefaultBackend = errors.New("missing DefaultBackend")
 	errInvalidPercentage     = errors.New("invalid percentage: must be between 0 and 100")
+	errInvalidConfigType     = errors.New("invalid configuration type")
+	errDefaultBackendNotSet  = errors.New("DefaultBackend must be set")
 )
 
 const (
@@ -81,11 +83,11 @@ func New(ctx context.Context, next http.Handler, cfg interface{}, name string) (
 
 	parsedConfig, ok := cfg.(*config.Config)
 	if !ok {
-		return nil, errors.New("invalid configuration type")
+		return nil, errInvalidConfigType
 	}
 
 	if parsedConfig.DefaultBackend == "" {
-		return nil, errors.New("DefaultBackend must be set")
+		return nil, errDefaultBackendNotSet
 	}
 
 	if parsedConfig.Debug {
