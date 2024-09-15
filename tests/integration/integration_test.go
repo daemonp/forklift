@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	"github.com/daemonp/forklift/config"
 )
 
 const (
@@ -19,6 +21,56 @@ func closeBody(t *testing.T, body io.Closer) {
 }
 
 func TestIntegration(t *testing.T) {
+	cfg := &config.Config{
+		DefaultBackend: "http://default-backend.example.com",
+		Rules: []config.RoutingRule{
+			{
+				Path:       "/",
+				Method:     "GET",
+				Backend:    "http://echo1.example.com",
+				Percentage: 50,
+			},
+			{
+				Path:       "/",
+				Method:     "GET",
+				Backend:    "http://echo2.example.com",
+				Percentage: 50,
+			},
+			{
+				Path:    "/v3",
+				Method:  "GET",
+				Backend: "http://echo3.example.com",
+			},
+			{
+				Path:    "/",
+				Method:  "POST",
+				Backend: "http://echo2.example.com",
+				Conditions: []config.RuleCondition{
+					{
+						Type:      "form",
+						Parameter: "MID",
+						Operator:  "eq",
+						Value:     "a",
+					},
+				},
+			},
+			{
+				Path:    "/query-test",
+				Method:  "GET",
+				Backend: "http://echo2.example.com",
+				Conditions: []config.RuleCondition{
+					{
+						Type:       "query",
+						QueryParam: "mid",
+						Operator:   "eq",
+						Value:      "two",
+					},
+				},
+			},
+		},
+		Debug: true,
+	}
+
 	tests := []struct {
 		name           string
 		path           string
@@ -67,7 +119,7 @@ func TestIntegration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			runTest(t, client, tt)
+			runTest(t, client, tt, cfg)
 		})
 	}
 
@@ -125,8 +177,7 @@ func runTest(t *testing.T, client *http.Client, tt struct {
 	body           string
 	headers        map[string]string
 	expectedBodies []string
-},
-) {
+}, cfg *config.Config) {
 	t.Helper()
 	req, err := createRequest(tt.method, traefikURL+tt.path, tt.body)
 	if err != nil {
@@ -144,7 +195,7 @@ func runTest(t *testing.T, client *http.Client, tt struct {
 	}
 	defer closeBody(t, resp.Body)
 
-	checkResponse(t, resp, tt)
+	checkResponse(t, resp, tt, cfg)
 }
 
 func createRequest(method, urlStr, body string) (*http.Request, error) {

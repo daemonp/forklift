@@ -1,4 +1,4 @@
-// Package forklift provides a middleware for flexible routing in Traefik.
+// Package forklift provides a middleware for flexible routing in Traefik v3.
 package forklift
 
 import (
@@ -9,14 +9,16 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
-	"log"
 	"net/http"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/daemonp/forklift/config"
+	"github.com/daemonp/forklift/logger"
+	"github.com/traefik/traefik/v3/pkg/log"
 )
 
 var (
@@ -24,14 +26,6 @@ var (
 	errMissingDefaultBackend = errors.New("missing DefaultBackend")
 	errInvalidPercentage     = errors.New("invalid percentage: must be between 0 and 100")
 )
-
-// Config holds the configuration for the middleware.
-type Config struct {
-	DefaultBackend string        `json:"defaultBackend,omitempty"`
-	Rules          []RoutingRule `json:"rules,omitempty"`
-	Debug          bool
-	Logger         Logger
-}
 
 // matchPathPrefix checks if the request path matches the rule's path prefix.
 func matchPathPrefix(reqPath, rulePrefix string) bool {
@@ -50,47 +44,26 @@ const (
 	hashDivisor          = 100.0
 )
 
-// RoutingRule defines the structure for routing rules in the middleware.
-type RoutingRule struct {
-	Path              string          `json:"path,omitempty"`
-	PathPrefix        string          `json:"pathPrefix,omitempty"`
-	Method            string          `json:"method,omitempty"`
-	Conditions        []RuleCondition `json:"conditions,omitempty"`
-	Backend           string          `json:"backend,omitempty"`
-	Percentage        float64         `json:"percentage,omitempty"`
-	Priority          int             `json:"priority,omitempty"`
-	PathPrefixRewrite string          `json:"pathPrefixRewrite,omitempty"`
-}
-
-// RuleCondition defines the structure for conditions in routing rules.
-type RuleCondition struct {
-	Type       string `json:"type,omitempty"`
-	Parameter  string `json:"parameter,omitempty"`
-	Operator   string `json:"operator,omitempty"`
-	Value      string `json:"value,omitempty"`
-	QueryParam string `json:"queryParam,omitempty"`
-}
-
 // Forklift is the main struct for the middleware.
 type Forklift struct {
 	next       http.Handler
-	config     *Config
+	config     *config.Config
 	name       string
 	ruleEngine *RuleEngine
-	debug      bool
-	logger     Logger
+	logger     log.Logger
 }
 
 // RuleEngine handles rule matching and caching.
 type RuleEngine struct {
-	config *Config
+	config *config.Config
 	cache  *sync.Map
+	logger log.Logger
 }
 
 // backendInfo stores information about a backend.
 type backendInfo struct {
 	Percentage float64
-	Rules      []*RoutingRule
+	Rules      []*config.RoutingRule
 }
 
 // backendEntry represents a backend with its selection bounds.
@@ -102,68 +75,61 @@ type backendEntry struct {
 }
 
 // CreateConfig creates a new Config.
-func CreateConfig() *Config {
-	return &Config{
-		Debug:          os.Getenv("DEBUG") == "true",
-		Logger:         NewDefaultLogger(),
-		DefaultBackend: "http://localhost:8080", // Set a default backend URL
-		Rules:          []RoutingRule{},         // Initialize empty rules slice
-	}
+func CreateConfig() *config.Config {
+	return config.NewConfig()
 }
 
 // New creates a new middleware.
-func New(_ context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
-	if config.Debug {
-		config.Logger.Printf("Debug: Creating new middleware with config: %+v", config)
+func New(ctx context.Context, next http.Handler, cfg *config.Config, name string) (http.Handler, error) {
+	logger := logger.NewLogger("forklift")
+	if cfg.Debug {
+		logger.Debug().Msgf("Creating new Forklift middleware with config: %+v", cfg)
 	}
-	forklift, err := NewForklift(next, config, name)
+	forklift, err := NewForklift(ctx, next, cfg, name)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create middleware: %w", err)
+		return nil, fmt.Errorf("failed to create Forklift middleware: %w", err)
 	}
 	return forklift, nil
 }
 
 // NewForklift creates a new middleware.
-func NewForklift(next http.Handler, config *Config, name string) (*Forklift, error) {
-	if config == nil {
+func NewForklift(ctx context.Context, next http.Handler, cfg *config.Config, name string) (*Forklift, error) {
+	if cfg == nil {
 		return nil, errEmptyConfig
 	}
-	if config.DefaultBackend == "" {
+	if cfg.DefaultBackend == "" {
 		return nil, errMissingDefaultBackend
 	}
-	for _, rule := range config.Rules {
+	for _, rule := range cfg.Rules {
 		if rule.Percentage < 0 || rule.Percentage > 100 {
 			return nil, errInvalidPercentage
 		}
 	}
 
 	// Sort rules by priority (higher priority first)
-	sort.Slice(config.Rules, func(i, j int) bool {
-		return config.Rules[i].Priority > config.Rules[j].Priority
+	sort.Slice(cfg.Rules, func(i, j int) bool {
+		return cfg.Rules[i].Priority > cfg.Rules[j].Priority
 	})
 
+	logger := logger.NewLogger("forklift").With().Str("middleware", name).Logger()
+
 	ruleEngine := &RuleEngine{
-		config: config,
+		config: cfg,
 		cache:  &sync.Map{},
+		logger: logger,
 	}
 
 	go ruleEngine.cleanupCache()
 
-	// Ensure logger is initialized
-	if config.Logger == nil {
-		config.Logger = NewDefaultLogger()
-	}
-
 	forklift := &Forklift{
 		next:       next,
-		config:     config,
+		config:     cfg,
 		name:       name,
 		ruleEngine: ruleEngine,
-		debug:      config.Debug,
-		logger:     config.Logger,
+		logger:     logger,
 	}
 
-	forklift.logger.Infof("Starting forklift middleware: %s", name)
+	forklift.logger.Info().Msgf("Starting Forklift middleware: %s", name)
 
 	return forklift, nil
 }

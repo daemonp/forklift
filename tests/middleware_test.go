@@ -2,6 +2,7 @@
 package tests
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/daemonp/forklift"
+	"github.com/daemonp/forklift/config"
 )
 
 const sessionCookieName = "forklift_id"
@@ -49,10 +51,10 @@ func closeMockServers(servers map[string]*httptest.Server) {
 	}
 }
 
-func createTestConfig(servers map[string]*httptest.Server) *forklift.Config {
-	return &forklift.Config{
+func createTestConfig(servers map[string]*httptest.Server) *config.Config {
+	return &config.Config{
 		DefaultBackend: servers["default"].URL,
-		Rules: []forklift.RoutingRule{
+		Rules: []config.RoutingRule{
 			{
 				Path:       "/",
 				Method:     "GET",
@@ -78,7 +80,7 @@ func createTestConfig(servers map[string]*httptest.Server) *forklift.Config {
 				Method:   "POST",
 				Backend:  servers["echo2"].URL,
 				Priority: 1,
-				Conditions: []forklift.RuleCondition{
+				Conditions: []config.RuleCondition{
 					{
 						Type:      "form",
 						Parameter: "MID",
@@ -92,7 +94,7 @@ func createTestConfig(servers map[string]*httptest.Server) *forklift.Config {
 				Method:   "GET",
 				Backend:  servers["echo2"].URL,
 				Priority: 1,
-				Conditions: []forklift.RuleCondition{
+				Conditions: []config.RuleCondition{
 					{
 						Type:       "query",
 						QueryParam: "mid",
@@ -113,7 +115,7 @@ func createTestConfig(servers map[string]*httptest.Server) *forklift.Config {
 				Backend:    servers["echo3"].URL,
 				Percentage: 10,
 				Priority:   1,
-				Conditions: []forklift.RuleCondition{
+				Conditions: []config.RuleCondition{
 					{
 						Type:      "form",
 						Parameter: "MID",
@@ -123,17 +125,18 @@ func createTestConfig(servers map[string]*httptest.Server) *forklift.Config {
 				},
 			},
 		},
+		Debug: true,
 	}
 }
 
-func createMiddleware(t *testing.T, config *forklift.Config) *forklift.Forklift {
+func createMiddleware(t *testing.T, cfg *config.Config) http.Handler {
 	t.Helper()
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("Next handler"))
 	})
 
-	middleware, err := forklift.NewForklift(next, config, "test-forklift")
+	middleware, err := forklift.New(context.Background(), next, cfg, "test-forklift")
 	if err != nil {
 		t.Fatalf("Failed to create Forklift middleware: %v", err)
 	}
