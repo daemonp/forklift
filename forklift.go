@@ -109,8 +109,10 @@ func New(ctx context.Context, next http.Handler, cfg interface{}, name string) (
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
+	// Ensure DefaultBackend is set
 	if parsedConfig.DefaultBackend == "" {
-		return nil, errMissingDefaultBackend
+		logger.Warnf("DefaultBackend not set, using default value")
+		parsedConfig.DefaultBackend = "http://localhost:8080"
 	}
 
 	if parsedConfig.Debug {
