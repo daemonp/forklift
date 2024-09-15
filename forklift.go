@@ -285,12 +285,12 @@ func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backen
 	backends := a.sortBackends(backendPercentages)
 	hashValue := a.calculateHash(sessionID, matchingRules)
 	selectedBackend := a.selectBackendFromRanges(backends, backendPercentages, hashValue)
-	
+
 	if a.config.Debug {
 		a.logger.Debugf("Selected backend: %s (hash value: %f)", selectedBackend, hashValue)
 		a.logger.Debugf("Backend percentages: %v", backendPercentages)
 	}
-	
+
 	return selectedBackend
 }
 
@@ -305,8 +305,6 @@ func (a *Forklift) sortBackends(backendPercentages map[string]float64) []string 
 
 func (a *Forklift) selectBackendFromRanges(backends []string, backendPercentages map[string]float64, hashValue float64) string {
 	cumulativeRanges := a.createCumulativeRanges(backends, backendPercentages)
-	a.logger.Debugf("Cumulative ranges: %v", cumulativeRanges)
-	a.logger.Debugf("Hash value: %f", hashValue)
 
 	totalPercentage := 0.0
 	for _, percentage := range backendPercentages {
@@ -314,7 +312,6 @@ func (a *Forklift) selectBackendFromRanges(backends []string, backendPercentages
 	}
 
 	scaledHashValue := hashValue * (totalPercentage / 100.0)
-	a.logger.Debugf("Scaled hash value: %f", scaledHashValue)
 
 	var selectedBackend string
 	for _, backend := range backends {
@@ -325,10 +322,9 @@ func (a *Forklift) selectBackendFromRanges(backends []string, backendPercentages
 	}
 
 	if selectedBackend == "" {
-		selectedBackend = backends[len(backends)-1] // Default to the last backend if no match
+		selectedBackend = backends[len(backends)-1] // Default to the last backend if no match.
 	}
 
-	a.logger.Debugf("Selected backend: %s", selectedBackend)
 	return selectedBackend
 }
 
@@ -347,9 +343,6 @@ func (a *Forklift) createCumulativeRanges(backends []string, backendPercentages 
 			ranges[backend] *= factor
 		}
 	}
-
-	a.logger.Debugf("Backend percentages: %v", backendPercentages)
-	a.logger.Debugf("Cumulative ranges: %v", ranges)
 
 	return ranges
 }
