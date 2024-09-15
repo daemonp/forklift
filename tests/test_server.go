@@ -1,3 +1,4 @@
+// Package tests provides utility functions and structures for testing the Forklift middleware.
 package tests
 
 import (
