@@ -179,7 +179,7 @@ func (a *Forklift) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	proxyReq, err := a.createProxyRequest(req, backend, selectedRule)
 	if err != nil {
-		a.logger.Printf("Error creating proxy request: %v", err)
+		a.logger.Errorf("Error creating proxy request: %v", err)
 		http.Error(rw, "Error creating proxy request", http.StatusInternalServerError)
 		return
 	}
@@ -549,8 +549,8 @@ func getOrCreateSessionID(rw http.ResponseWriter, req *http.Request) string {
 
 	sessionID, err := generateSessionID()
 	if err != nil {
-		// Use the custom logger instead of the standard log package
-		a.logger.Errorf("Error generating session ID: %v", err)
+		// Use the forklift logger instead of accessing it through 'a'
+		forklift.logger.Errorf("Error generating session ID: %v", err)
 		return ""
 	}
 
