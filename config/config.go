@@ -1,13 +1,8 @@
 // Package config provides configuration structures for the Forklift middleware.
 package config
 
-import (
-	"github.com/traefik/traefik/v3/pkg/config/dynamic"
-)
-
 // Config holds the configuration for the Forklift middleware.
 type Config struct {
-	dynamic.Plugin `json:",inline"`
 	DefaultBackend string        `json:"defaultBackend,omitempty"`
 	Rules          []RoutingRule `json:"rules,omitempty"`
 	Debug          bool          `json:"debug,omitempty"`
@@ -34,8 +29,8 @@ type RuleCondition struct {
 	Value      string `json:"value,omitempty"`
 }
 
-// NewConfig creates and initializes the plugin configuration.
-func NewConfig() *Config {
+// CreateConfig creates and initializes the plugin configuration.
+func CreateConfig() *Config {
 	return &Config{
 		DefaultBackend: "http://localhost:8080",
 		Rules:          []RoutingRule{},
