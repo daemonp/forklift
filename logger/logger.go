@@ -3,7 +3,7 @@ package logger
 
 import (
 	"github.com/rs/zerolog"
-	"github.com/traefik/traefik/v3/pkg/log"
+	"github.com/traefik/traefik/v3/pkg/logs"
 )
 
 // Logger is an interface that represents the logging capabilities required by the Forklift middleware.
