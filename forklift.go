@@ -277,7 +277,7 @@ func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backen
 		totalPercentage += percentage
 	}
 
-	scaledHashValue := hashValue * totalPercentage // Scale to 0-totalPercentage range
+	scaledHashValue := hashValue * totalPercentage
 
 	var cumulativePercentage float64
 	for _, backend := range backends {
@@ -363,7 +363,7 @@ func (a *Forklift) calculateHash(sessionID string, matchingRules []RoutingRule) 
 		}
 	}
 
-	hashValue := float64(h.Sum64()) / float64(^uint64(0)) * maxPercentage
+	hashValue := float64(h.Sum64()) / float64(^uint64(0))
 	if a.config.Debug {
 		a.logger.Debugf("Calculated hash value: %f", hashValue)
 	}
