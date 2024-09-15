@@ -2,8 +2,9 @@
 package logger
 
 import (
-	"github.com/rs/zerolog"
 	"os"
+
+	"github.com/rs/zerolog"
 )
 
 // Logger is an interface that represents the logging capabilities required by the Forklift middleware.
