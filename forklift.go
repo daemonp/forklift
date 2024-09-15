@@ -10,7 +10,6 @@ import (
 	"hash/fnv"
 	"io"
 	"net/http"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -567,5 +566,3 @@ func getOrCreateSessionID(rw http.ResponseWriter, req *http.Request) string {
 
 	return sessionID
 }
-
-
