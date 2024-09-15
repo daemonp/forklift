@@ -135,6 +135,9 @@ func NewForklift(_ context.Context, next http.Handler, cfg *config.Config, name 
 		}
 	}
 
+	// Turn off debugging
+	cfg.Debug = false
+
 	// Sort rules by priority (higher priority first)
 	sort.Slice(cfg.Rules, func(i, j int) bool {
 		return cfg.Rules[i].Priority > cfg.Rules[j].Priority
