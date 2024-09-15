@@ -230,24 +230,37 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) SelectedBa
 		return matchingRules[i].Priority > matchingRules[j].Priority
 	})
 
-	// Check for non-percentage based rules first
+	// Group rules by path
+	rulesByPath := make(map[string][]RoutingRule)
 	for _, rule := range matchingRules {
-		if rule.Percentage == 0 {
-			return SelectedBackend{Backend: rule.Backend, Rule: &rule}
+		path := rule.Path
+		if path == "" {
+			path = rule.PathPrefix
 		}
+		rulesByPath[path] = append(rulesByPath[path], rule)
 	}
 
-	// If we reach here, we only have percentage-based rules
-	backendPercentages := make(map[string]float64)
-	for _, rule := range matchingRules {
-		backendPercentages[rule.Backend] += rule.Percentage
-	}
+	// Process rules for each path
+	for _, rules := range rulesByPath {
+		// Check for non-percentage based rules first
+		for _, rule := range rules {
+			if rule.Percentage == 0 {
+				return SelectedBackend{Backend: rule.Backend, Rule: &rule}
+			}
+		}
 
-	// Select backend based on percentages and rule hash
-	selectedBackend := a.selectBackendByPercentageAndRuleHash(sessionID, backendPercentages, matchingRules)
-	for _, rule := range matchingRules {
-		if rule.Backend == selectedBackend {
-			return SelectedBackend{Backend: selectedBackend, Rule: &rule}
+		// If we reach here, we only have percentage-based rules for this path
+		backendPercentages := make(map[string]float64)
+		for _, rule := range rules {
+			backendPercentages[rule.Backend] += rule.Percentage
+		}
+
+		// Select backend based on percentages and rule hash
+		selectedBackend := a.selectBackendByPercentageAndRuleHash(sessionID, backendPercentages, rules)
+		for _, rule := range rules {
+			if rule.Backend == selectedBackend {
+				return SelectedBackend{Backend: selectedBackend, Rule: &rule}
+			}
 		}
 	}
 
