@@ -143,7 +143,7 @@ func createMiddleware(t *testing.T, cfg *config.Config) http.Handler {
 	return middleware
 }
 
-func runBasicTests(t *testing.T, middleware *forklift.Forklift) {
+func runBasicTests(t *testing.T, middleware http.Handler) {
 	t.Helper()
 	tests := []struct {
 		name             string
@@ -246,7 +246,7 @@ func runBasicTests(t *testing.T, middleware *forklift.Forklift) {
 	}
 }
 
-func runPercentageBasedRoutingTest(t *testing.T, middleware *forklift.Forklift) {
+func runPercentageBasedRoutingTest(t *testing.T, middleware http.Handler) {
 	t.Helper()
 	t.Run("Percentage-based routing for GET /", func(t *testing.T) {
 		totalRequests := 1000
@@ -283,7 +283,7 @@ func runPercentageBasedRoutingTest(t *testing.T, middleware *forklift.Forklift) 
 	})
 }
 
-func runDefaultBackendTest(t *testing.T, middleware *forklift.Forklift) {
+func runDefaultBackendTest(t *testing.T, middleware http.Handler) {
 	t.Helper()
 	t.Run("Routing to default backend when no rules match", func(t *testing.T) {
 		req := createTestRequest(t, "GET", "/non-existent", nil, nil)
@@ -301,7 +301,7 @@ func runDefaultBackendTest(t *testing.T, middleware *forklift.Forklift) {
 	})
 }
 
-func runSessionAffinityTest(t *testing.T, middleware *forklift.Forklift) {
+func runSessionAffinityTest(t *testing.T, middleware http.Handler) {
 	t.Helper()
 	t.Run("Session affinity test", func(t *testing.T) {
 		req := createTestRequest(t, "GET", "/", nil, nil)
