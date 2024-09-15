@@ -225,16 +225,16 @@ func (a *Forklift) handleSessionID(rw http.ResponseWriter, req *http.Request) st
 	return sessionID
 }
 
-type selectedBackend struct {
+type SelectedBackend struct {
 	Backend string
 	Rule    *RoutingRule
 }
 
-func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBackend {
+func (a *Forklift) selectBackend(req *http.Request, sessionID string) SelectedBackend {
 	matchingRules := a.getMatchingRules(req)
 
 	if len(matchingRules) == 0 {
-		return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
+		return SelectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
 	}
 
 	// Sort matching rules by priority (higher priority first)
@@ -266,11 +266,11 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 	// Select backend based on percentages
 	selectedBackend := a.selectBackendByPercentage(sessionID, backendPercentages)
 	if selectedBackend != "" {
-		return selectedBackend{Backend: selectedBackend, Rule: &backendRules[selectedBackend][0]}
+		return SelectedBackend{Backend: selectedBackend, Rule: &backendRules[selectedBackend][0]}
 	}
 
 	// If no backend was selected, use the default backend
-	return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
+	return SelectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
 }
 
 func (a *Forklift) selectBackendByPercentage(sessionID string, backendPercentages map[string]float64) string {
@@ -395,12 +395,12 @@ func (a *Forklift) buildCumulativePercentages(backendPercentages map[string]*bac
 	return backends
 }
 
-func (a *Forklift) selectBackendFromPercentages(backends []backendEntry, sessionID string) selectedBackend {
+func (a *Forklift) selectBackendFromPercentages(backends []backendEntry, sessionID string) SelectedBackend {
 	h := fnv.New32a()
 	_, err := h.Write([]byte(sessionID))
 	if err != nil {
 		a.logger.Errorf("Error hashing session ID: %v", err)
-		return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
+		return SelectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
 	}
 	hashValue := h.Sum32()
 	hashPercentage := float64(hashValue%hashModulo) / hashDivisor
@@ -408,14 +408,14 @@ func (a *Forklift) selectBackendFromPercentages(backends []backendEntry, session
 	for _, be := range backends {
 		if hashPercentage >= be.LowerBound && hashPercentage < be.UpperBound {
 			selectedRule := be.Info.Rules[0]
-			return selectedBackend{
+			return SelectedBackend{
 				Backend: be.Backend,
 				Rule:    selectedRule,
 			}
 		}
 	}
 
-	return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
+	return SelectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
 }
 
 func (a *Forklift) createProxyRequest(req *http.Request, backend string, selectedRule *RoutingRule) (*http.Request, error) {
