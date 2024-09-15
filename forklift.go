@@ -266,7 +266,7 @@ func (a *Forklift) shouldApplyPercentage(sessionID string, percentage float64) b
 		return false
 	}
 	hashValue := h.Sum32()
-	normalizedHash := float64(hashValue % 100) / 100.0
+	normalizedHash := float64(hashValue % 10000) / 10000.0
 	result := normalizedHash < percentage/100.0
 	if a.config.Debug {
 		a.logger.Debugf("Session ID: %s, Percentage: %.2f, Normalized Hash: %.4f, Result: %v", sessionID, percentage, normalizedHash, result)
@@ -542,7 +542,7 @@ func (re *RuleEngine) checkHeader(req *http.Request, condition RuleCondition) bo
 	if re.config.Debug {
 		re.logger.Debugf("Header %s value: %s", condition.Parameter, headerValue)
 	}
-	result := compareValues(headerValue, condition.Operator, condition.Value)
+	result := compareValues(strings.ToLower(headerValue), condition.Operator, strings.ToLower(condition.Value))
 	if re.config.Debug {
 		re.logger.Debugf("Header condition result: %v", result)
 		re.logger.Debugf("Header condition details: Parameter=%s, Operator=%s, Value=%s", condition.Parameter, condition.Operator, condition.Value)
