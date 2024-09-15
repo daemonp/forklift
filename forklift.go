@@ -97,22 +97,13 @@ func CreateConfig() *config.Config {
 func New(ctx context.Context, next http.Handler, cfg interface{}, name string) (http.Handler, error) {
 	logger := logger.NewLogger("forklift")
 
-	// Convert cfg to YAML string
-	yamlConfig, err := yaml.Marshal(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal config to YAML: %w", err)
+	parsedConfig, ok := cfg.(*config.Config)
+	if !ok {
+		return nil, fmt.Errorf("invalid configuration type")
 	}
 
-	// Load config from YAML string
-	parsedConfig, err := config.LoadConfig(string(yamlConfig))
-	if err != nil {
-		return nil, fmt.Errorf("failed to load config: %w", err)
-	}
-
-	// Ensure DefaultBackend is set
 	if parsedConfig.DefaultBackend == "" {
-		logger.Infof("DefaultBackend not set, using default value")
-		parsedConfig.DefaultBackend = "http://localhost:8080"
+		return nil, fmt.Errorf("DefaultBackend must be set")
 	}
 
 	if parsedConfig.Debug {
@@ -243,14 +234,9 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 		return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
 	}
 
-	backendPercentages := a.mapBackendsToPercentages(matchingRules)
-	totalPercentage := a.sumTotalPercentages(backendPercentages)
-
-	a.adjustPercentages(backendPercentages, &totalPercentage)
-
-	backends := a.buildCumulativePercentages(backendPercentages)
-
-	return a.selectBackendFromPercentages(backends, sessionID)
+	// Select the first matching rule
+	selectedRule := matchingRules[0]
+	return selectedBackend{Backend: selectedRule.Backend, Rule: &selectedRule}
 }
 
 func (a *Forklift) getMatchingRules(req *http.Request) []RoutingRule {
