@@ -93,12 +93,26 @@ func CreateConfig() *config.Config {
 }
 
 // New creates a new middleware.
-func New(ctx context.Context, next http.Handler, cfg *config.Config, name string) (http.Handler, error) {
+func New(ctx context.Context, next http.Handler, cfg interface{}, name string) (http.Handler, error) {
 	logger := logger.NewLogger("forklift")
-	if cfg.Debug {
-		logger.Debugf("Creating new Forklift middleware with config: %+v", cfg)
+
+	// Convert cfg to YAML string
+	yamlConfig, err := yaml.Marshal(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal config to YAML: %w", err)
 	}
-	forklift, err := NewForklift(ctx, next, cfg, name)
+
+	// Load config from YAML string
+	parsedConfig, err := config.LoadConfig(string(yamlConfig))
+	if err != nil {
+		return nil, fmt.Errorf("failed to load config: %w", err)
+	}
+
+	if parsedConfig.Debug {
+		logger.Debugf("Creating new Forklift middleware with config: %+v", parsedConfig)
+	}
+
+	forklift, err := NewForklift(ctx, next, parsedConfig, name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Forklift middleware: %w", err)
 	}
