@@ -259,17 +259,17 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 }
 
 func (a *Forklift) shouldApplyPercentage(sessionID string, percentage float64) bool {
-	h := fnv.New32a()
+	h := fnv.New64a()
 	_, err := h.Write([]byte(sessionID))
 	if err != nil {
 		a.logger.Errorf("Error hashing session ID: %v", err)
 		return false
 	}
-	hashValue := h.Sum32()
-	normalizedHash := float64(hashValue % 10000) / 10000.0
+	hashValue := h.Sum64()
+	normalizedHash := float64(hashValue % 1000000) / 1000000.0
 	result := normalizedHash < percentage/100.0
 	if a.config.Debug {
-		a.logger.Debugf("Session ID: %s, Percentage: %.2f, Normalized Hash: %.4f, Result: %v", sessionID, percentage, normalizedHash, result)
+		a.logger.Debugf("Session ID: %s, Percentage: %.2f, Normalized Hash: %.6f, Result: %v", sessionID, percentage, normalizedHash, result)
 	}
 	return result
 }
@@ -538,16 +538,25 @@ func (re *RuleEngine) checkForm(req *http.Request, condition RuleCondition) bool
 }
 
 func (re *RuleEngine) checkHeader(req *http.Request, condition RuleCondition) bool {
-	headerValue := req.Header.Get(condition.Parameter)
+	headerValues := req.Header[condition.Parameter]
 	if re.config.Debug {
-		re.logger.Debugf("Header %s value: %s", condition.Parameter, headerValue)
+		re.logger.Debugf("Header %s values: %v", condition.Parameter, headerValues)
 	}
-	result := compareValues(strings.ToLower(headerValue), condition.Operator, strings.ToLower(condition.Value))
+	for _, headerValue := range headerValues {
+		result := compareValues(strings.ToLower(headerValue), condition.Operator, strings.ToLower(condition.Value))
+		if result {
+			if re.config.Debug {
+				re.logger.Debugf("Header condition result: true")
+				re.logger.Debugf("Header condition details: Parameter=%s, Operator=%s, Value=%s", condition.Parameter, condition.Operator, condition.Value)
+			}
+			return true
+		}
+	}
 	if re.config.Debug {
-		re.logger.Debugf("Header condition result: %v", result)
+		re.logger.Debugf("Header condition result: false")
 		re.logger.Debugf("Header condition details: Parameter=%s, Operator=%s, Value=%s", condition.Parameter, condition.Operator, condition.Value)
 	}
-	return result
+	return false
 }
 
 func (re *RuleEngine) checkQuery(req *http.Request, condition RuleCondition) bool {
@@ -564,20 +573,22 @@ func (re *RuleEngine) checkQuery(req *http.Request, condition RuleCondition) boo
 }
 
 func (re *RuleEngine) checkCookie(req *http.Request, condition RuleCondition) bool {
-	cookie, err := req.Cookie(condition.Parameter)
-	if err != nil {
-		if re.config.Debug {
-			re.logger.Debugf("Cookie %s not found", condition.Parameter)
+	cookies := req.Cookies()
+	for _, cookie := range cookies {
+		if cookie.Name == condition.Parameter {
+			result := compareValues(cookie.Value, condition.Operator, condition.Value)
+			if re.config.Debug {
+				re.logger.Debugf("Cookie %s value: %s", condition.Parameter, cookie.Value)
+				re.logger.Debugf("Cookie condition result: %v", result)
+				re.logger.Debugf("Cookie condition details: Parameter=%s, Operator=%s, Value=%s", condition.Parameter, condition.Operator, condition.Value)
+			}
+			return result
 		}
-		return false
 	}
-	result := compareValues(cookie.Value, condition.Operator, condition.Value)
 	if re.config.Debug {
-		re.logger.Debugf("Cookie %s value: %s", condition.Parameter, cookie.Value)
-		re.logger.Debugf("Cookie condition result: %v", result)
-		re.logger.Debugf("Cookie condition details: Parameter=%s, Operator=%s, Value=%s", condition.Parameter, condition.Operator, condition.Value)
+		re.logger.Debugf("Cookie %s not found", condition.Parameter)
 	}
-	return result
+	return false
 }
 
 // compareValues compares two string values based on the given operator.
