@@ -253,7 +253,6 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 	return a.selectBackendFromPercentages(backends, sessionID)
 }
 
-
 func (a *Forklift) getMatchingRules(req *http.Request) []RoutingRule {
 	matchingRules := []RoutingRule{}
 	for _, rule := range a.config.Rules {
