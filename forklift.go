@@ -270,12 +270,12 @@ func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backen
 		totalPercentage += percentage
 	}
 
-	scaledHashValue := hashValue * totalPercentage
+	scaledHashValue := hashValue * 100.0 // Scale to 0-100 range
 
 	var cumulativePercentage float64
 	for _, backend := range backends {
 		cumulativePercentage += backendPercentages[backend]
-		if scaledHashValue < cumulativePercentage {
+		if scaledHashValue <= cumulativePercentage {
 			if a.config.Debug {
 				a.logger.Debugf("Selected backend: %s (hash value: %f, scaled hash value: %f, cumulative percentage: %f)", backend, hashValue, scaledHashValue, cumulativePercentage)
 				a.logger.Debugf("Backend percentages: %v", backendPercentages)
