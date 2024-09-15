@@ -242,34 +242,74 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 		return matchingRules[i].Priority > matchingRules[j].Priority
 	})
 
-	// Apply percentage-based routing if applicable
+	// Group rules by backend
+	backendRules := make(map[string][]RoutingRule)
 	for _, rule := range matchingRules {
-		if rule.Percentage > 0 {
-			if a.shouldApplyPercentage(sessionID, rule.Percentage) {
-				return selectedBackend{Backend: rule.Backend, Rule: &rule}
-			}
-		} else {
-			// If no percentage specified, select this rule
-			return selectedBackend{Backend: rule.Backend, Rule: &rule}
-		}
+		backendRules[rule.Backend] = append(backendRules[rule.Backend], rule)
 	}
 
-	// If no rule was selected, use the default backend
+	// Calculate total percentage for each backend
+	backendPercentages := make(map[string]float64)
+	for backend, rules := range backendRules {
+		totalPercentage := 0.0
+		for _, rule := range rules {
+			if rule.Percentage > 0 {
+				totalPercentage += rule.Percentage
+			} else {
+				totalPercentage = 100.0
+				break
+			}
+		}
+		backendPercentages[backend] = totalPercentage
+	}
+
+	// Select backend based on percentages
+	selectedBackend := a.selectBackendByPercentage(sessionID, backendPercentages)
+	if selectedBackend != "" {
+		return selectedBackend{Backend: selectedBackend, Rule: &backendRules[selectedBackend][0]}
+	}
+
+	// If no backend was selected, use the default backend
 	return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
 }
 
+func (a *Forklift) selectBackendByPercentage(sessionID string, backendPercentages map[string]float64) string {
+	totalPercentage := 0.0
+	for _, percentage := range backendPercentages {
+		totalPercentage += percentage
+	}
+
+	if totalPercentage == 0 {
+		return ""
+	}
+
+	hash := fnv.New32a()
+	hash.Write([]byte(sessionID))
+	randomValue := float64(hash.Sum32() % 100000) / 100000.0 * totalPercentage
+
+	currentSum := 0.0
+	for backend, percentage := range backendPercentages {
+		currentSum += percentage
+		if randomValue <= currentSum {
+			return backend
+		}
+	}
+
+	return ""
+}
+
 func (a *Forklift) shouldApplyPercentage(sessionID string, percentage float64) bool {
-	h := fnv.New64a()
+	h := fnv.New32a()
 	_, err := h.Write([]byte(sessionID))
 	if err != nil {
 		a.logger.Errorf("Error hashing session ID: %v", err)
 		return false
 	}
-	hashValue := h.Sum64()
-	normalizedHash := float64(hashValue % 1000000) / 1000000.0
+	hashValue := h.Sum32()
+	normalizedHash := float64(hashValue % 10000) / 10000.0
 	result := normalizedHash < percentage/100.0
 	if a.config.Debug {
-		a.logger.Debugf("Session ID: %s, Percentage: %.2f, Normalized Hash: %.6f, Result: %v", sessionID, percentage, normalizedHash, result)
+		a.logger.Debugf("Session ID: %s, Percentage: %.2f, Normalized Hash: %.4f, Result: %v", sessionID, percentage, normalizedHash, result)
 	}
 	return result
 }
@@ -538,12 +578,12 @@ func (re *RuleEngine) checkForm(req *http.Request, condition RuleCondition) bool
 }
 
 func (re *RuleEngine) checkHeader(req *http.Request, condition RuleCondition) bool {
-	headerValues := req.Header[condition.Parameter]
+	headerValues := req.Header.Values(condition.Parameter)
 	if re.config.Debug {
 		re.logger.Debugf("Header %s values: %v", condition.Parameter, headerValues)
 	}
 	for _, headerValue := range headerValues {
-		result := compareValues(strings.ToLower(headerValue), condition.Operator, strings.ToLower(condition.Value))
+		result := compareValues(strings.TrimSpace(strings.ToLower(headerValue)), condition.Operator, strings.TrimSpace(strings.ToLower(condition.Value)))
 		if result {
 			if re.config.Debug {
 				re.logger.Debugf("Header condition result: true")
