@@ -323,6 +323,7 @@ func (a *Forklift) calculateHash(sessionID string, matchingRules []RoutingRule) 
 
 func (a *Forklift) writeToHash(h hash.Hash64, data ...[]byte) {
 	var err error
+	var hash hash.Hash64 = h
 	for _, d := range data {
 		_, err = h.Write(d)
 		if err != nil {
