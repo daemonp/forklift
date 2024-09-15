@@ -11,6 +11,12 @@ const (
 	traefikURL = "http://localhost:80"
 )
 
+func closeBody(t *testing.T, body io.Closer) {
+	if err := body.Close(); err != nil {
+		t.Errorf("Error closing response body: %v", err)
+	}
+}
+
 func TestIntegration(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -70,8 +76,8 @@ func TestIntegration(t *testing.T) {
 		hitsEcho1 := 0
 		hitsEcho2 := 0
 
-		for i := 0; i < totalRequests; i++ {
-			req, err := http.NewRequest("GET", traefikURL+"/", nil)
+		for range totalRequests {
+			req, err := http.NewRequest(http.MethodGet, traefikURL+"/", nil)
 			if err != nil {
 				t.Fatalf("Failed to create request: %v", err)
 			}
@@ -82,16 +88,17 @@ func TestIntegration(t *testing.T) {
 			}
 			bodyBytes, err := io.ReadAll(resp.Body)
 			if err != nil {
-				resp.Body.Close()
+				closeBody(t, resp.Body)
 				t.Fatalf("Failed to read response body: %v", err)
 			}
 			bodyStr := string(bodyBytes)
-			resp.Body.Close()
-			if strings.Contains(bodyStr, "Hello from V1") {
+			closeBody(t, resp.Body)
+			switch {
+			case strings.Contains(bodyStr, "Hello from V1"):
 				hitsEcho1++
-			} else if strings.Contains(bodyStr, "Hello from V2") {
+			case strings.Contains(bodyStr, "Hello from V2"):
 				hitsEcho2++
-			} else {
+			default:
 				t.Errorf("Unexpected response body: %v", bodyStr)
 			}
 		}
@@ -134,7 +141,7 @@ func runTest(t *testing.T, client *http.Client, tt struct {
 	if err != nil {
 		t.Fatalf("Failed to send request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer closeBody(t, resp.Body)
 
 	checkResponse(t, resp, tt)
 }
