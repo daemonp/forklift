@@ -249,10 +249,8 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 				return selectedBackend{Backend: rule.Backend, Rule: &rule}
 			}
 		} else {
-			// If no percentage or 100%, select this rule
-			if rule.Path == req.URL.Path && (rule.Method == "" || rule.Method == req.Method) {
-				return selectedBackend{Backend: rule.Backend, Rule: &rule}
-			}
+			// If no percentage specified, select this rule
+			return selectedBackend{Backend: rule.Backend, Rule: &rule}
 		}
 	}
 
@@ -268,7 +266,7 @@ func (a *Forklift) shouldApplyPercentage(sessionID string, percentage float64) b
 		return false
 	}
 	hashValue := h.Sum32()
-	normalizedHash := float64(hashValue % 10000) / 10000.0
+	normalizedHash := float64(hashValue) / float64(^uint32(0))
 	result := normalizedHash < percentage/100.0
 	if a.config.Debug {
 		a.logger.Debugf("Session ID: %s, Percentage: %.2f, Normalized Hash: %.4f, Result: %v", sessionID, percentage, normalizedHash, result)
@@ -455,8 +453,13 @@ func (a *Forklift) sendProxyRequest(rw http.ResponseWriter, proxyReq *http.Reque
 // ruleMatches checks if a request matches a given rule.
 func (re *RuleEngine) ruleMatches(req *http.Request, rule RoutingRule) bool {
 	// Check exact path match
-	if rule.Path != "" && rule.Path != req.URL.Path {
-		return false
+	if rule.Path != "" {
+		if rule.Path != req.URL.Path {
+			if re.config.Debug {
+				re.logger.Debugf("Path mismatch: %s != %s", rule.Path, req.URL.Path)
+			}
+			return false
+		}
 	}
 	// Check path prefix match
 	if rule.PathPrefix != "" {
@@ -469,11 +472,12 @@ func (re *RuleEngine) ruleMatches(req *http.Request, rule RoutingRule) bool {
 		if re.config.Debug {
 			re.logger.Debugf("Path prefix match: %s for path: %s", rule.PathPrefix, req.URL.Path)
 		}
-	} else if re.config.Debug {
-		re.logger.Debugf("No path prefix specified for path: %s", req.URL.Path)
 	}
 	// Check method match
 	if rule.Method != "" && rule.Method != req.Method {
+		if re.config.Debug {
+			re.logger.Debugf("Method mismatch: %s != %s", rule.Method, req.Method)
+		}
 		return false
 	}
 	if re.config.Debug {
