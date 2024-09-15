@@ -21,8 +21,10 @@ import (
 )
 
 // Alias config types for convenience
-type RoutingRule = config.RoutingRule
-type RuleCondition = config.RuleCondition
+type (
+	RoutingRule   = config.RoutingRule
+	RuleCondition = config.RuleCondition
+)
 
 var (
 	errEmptyConfig           = errors.New("empty configuration")
