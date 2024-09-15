@@ -264,14 +264,32 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) SelectedBa
 func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backendPercentages map[string]float64, matchingRules []RoutingRule) string {
 	backends := a.sortBackends(backendPercentages)
 	hashValue := a.calculateHash(sessionID, matchingRules)
-	selectedBackend := a.selectBackendFromRanges(backends, backendPercentages, hashValue)
-
-	if a.config.Debug {
-		a.logger.Debugf("Selected backend: %s (hash value: %f)", selectedBackend, hashValue)
-		a.logger.Debugf("Backend percentages: %v", backendPercentages)
+	
+	totalPercentage := 0.0
+	for _, percentage := range backendPercentages {
+		totalPercentage += percentage
 	}
 
-	return selectedBackend
+	scaledHashValue := hashValue * (totalPercentage / 100.0)
+	
+	var cumulativePercentage float64
+	for _, backend := range backends {
+		cumulativePercentage += backendPercentages[backend]
+		if scaledHashValue <= cumulativePercentage {
+			if a.config.Debug {
+				a.logger.Debugf("Selected backend: %s (hash value: %f, scaled hash value: %f)", backend, hashValue, scaledHashValue)
+				a.logger.Debugf("Backend percentages: %v", backendPercentages)
+			}
+			return backend
+		}
+	}
+
+	// If no backend was selected (which shouldn't happen), return the last backend
+	lastBackend := backends[len(backends)-1]
+	if a.config.Debug {
+		a.logger.Debugf("Fallback to last backend: %s", lastBackend)
+	}
+	return lastBackend
 }
 
 func (a *Forklift) sortBackends(backendPercentages map[string]float64) []string {

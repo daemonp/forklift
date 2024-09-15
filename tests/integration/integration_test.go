@@ -125,10 +125,11 @@ func TestIntegration(t *testing.T) {
 
 		t.Logf("Echo1: %.2f%%, Echo2: %.2f%%", percentageEcho1, percentageEcho2)
 
-		if percentageEcho1 < 45 || percentageEcho1 > 55 {
+		tolerance := 5.0 // Allow for 5% tolerance
+		if percentageEcho1 < 50-tolerance || percentageEcho1 > 50+tolerance {
 			t.Errorf("Expected Echo1 to receive approximately 50%% of traffic, got %.2f%%", percentageEcho1)
 		}
-		if percentageEcho2 < 45 || percentageEcho2 > 55 {
+		if percentageEcho2 < 50-tolerance || percentageEcho2 > 50+tolerance {
 			t.Errorf("Expected Echo2 to receive approximately 50%% of traffic, got %.2f%%", percentageEcho2)
 		}
 	})
