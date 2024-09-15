@@ -404,19 +404,23 @@ func (a *Forklift) selectBackendFromPercentages(backends []backendEntry, session
 	}
 	hashValue := h.Sum64()
 
-	totalPercentage := 0.0
+	totalWeight := uint64(0)
 	for _, be := range backends {
-		totalPercentage += be.UpperBound - be.LowerBound
+		weight := uint64((be.UpperBound - be.LowerBound) * 1000000) // Multiply by 1,000,000 to preserve precision
+		totalWeight += weight
 	}
 
-	if totalPercentage == 0 {
+	if totalWeight == 0 {
 		return SelectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
 	}
 
-	selection := float64(hashValue) / float64(^uint64(0)) * totalPercentage
+	selection := hashValue % totalWeight
 
+	cumulativeWeight := uint64(0)
 	for _, be := range backends {
-		if selection >= be.LowerBound && selection < be.UpperBound {
+		weight := uint64((be.UpperBound - be.LowerBound) * 1000000)
+		cumulativeWeight += weight
+		if selection < cumulativeWeight {
 			selectedRule := be.Info.Rules[0]
 			return SelectedBackend{
 				Backend: be.Backend,

@@ -306,6 +306,7 @@ func runSessionAffinityTest(t *testing.T, middleware http.Handler) {
 	t.Run("Session affinity test", func(t *testing.T) {
 		// Create a map to store session-backend pairs
 		sessionBackends := make(map[string]string)
+		backendCounts := make(map[string]int)
 
 		// Make multiple requests with different session IDs
 		for i := 0; i < 1000; i++ {
@@ -336,6 +337,7 @@ func runSessionAffinityTest(t *testing.T, middleware http.Handler) {
 			} else {
 				// If this is a new session ID, store the backend it mapped to
 				sessionBackends[sessionID] = body
+				backendCounts[body]++
 			}
 
 			// Make 10 more requests with the same session ID to verify consistency
@@ -353,23 +355,27 @@ func runSessionAffinityTest(t *testing.T, middleware http.Handler) {
 					t.Errorf("Session affinity broken. Session ID %s: Expected backend '%v', got '%v'", sessionID, body, newBody)
 				}
 			}
-		}
 
-		// Check the distribution of backends
-		backendCounts := make(map[string]int)
-		for _, backend := range sessionBackends {
-			backendCounts[backend]++
-		}
-
-		totalSessions := len(sessionBackends)
-		for backend, count := range backendCounts {
-			percentage := float64(count) / float64(totalSessions) * 100
-			t.Logf("Backend %s: %.2f%% (%d/%d)", backend, percentage, count, totalSessions)
-			if percentage < 45 || percentage > 55 {
-				t.Errorf("Backend distribution for %s is outside the expected range: %.2f%%", backend, percentage)
+			// Log progress every 100 requests
+			if (i+1) % 100 == 0 {
+				t.Logf("Processed %d requests", i+1)
+				logBackendDistribution(t, backendCounts, i+1)
 			}
 		}
+
+		// Final check of the distribution of backends
+		logBackendDistribution(t, backendCounts, len(sessionBackends))
 	})
+}
+
+func logBackendDistribution(t *testing.T, backendCounts map[string]int, totalSessions int) {
+	for backend, count := range backendCounts {
+		percentage := float64(count) / float64(totalSessions) * 100
+		t.Logf("Backend %s: %.2f%% (%d/%d)", backend, percentage, count, totalSessions)
+		if percentage < 45 || percentage > 55 {
+			t.Errorf("Backend distribution for %s is outside the expected range: %.2f%%", backend, percentage)
+		}
+	}
 }
 
 func createTestRequest(t *testing.T, method, path string, headers map[string]string, body url.Values) *http.Request {
