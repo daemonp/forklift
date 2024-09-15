@@ -1,6 +1,10 @@
 // Package logger provides logging functionality for the Forklift middleware.
 package logger
 
+import (
+	"github.com/rs/zerolog/log"
+)
+
 // Logger is an interface that represents the logging capabilities required by the Forklift middleware.
 type Logger interface {
 	Debugf(format string, args ...interface{})
