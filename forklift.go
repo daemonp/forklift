@@ -275,7 +275,6 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) SelectedBa
 
 func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backendPercentages map[string]float64, matchingRules []RoutingRule) string {
 	backends := a.sortBackends(backendPercentages)
-	ranges := a.createCumulativeRanges(backends, backendPercentages)
 	hashValue := a.calculateHash(sessionID, matchingRules)
 	return a.selectBackendFromRanges(backends, backendPercentages, hashValue)
 }
@@ -323,8 +322,10 @@ func (a *Forklift) calculateHash(sessionID string, matchingRules []RoutingRule) 
 }
 
 func (a *Forklift) writeToHash(h hash.Hash64, data ...[]byte) {
+	var err error
 	for _, d := range data {
-		if _, err := h.Write(d); err != nil {
+		_, err = h.Write(d)
+		if err != nil {
 			a.logger.Errorf("Error hashing data: %v", err)
 		}
 	}
