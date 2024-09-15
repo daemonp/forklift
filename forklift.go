@@ -230,31 +230,25 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) SelectedBa
 		return matchingRules[i].Priority > matchingRules[j].Priority
 	})
 
-	// Group rules by backend
-	backendRules := make(map[string][]RoutingRule)
+	// Check for non-percentage based rules first
 	for _, rule := range matchingRules {
-		backendRules[rule.Backend] = append(backendRules[rule.Backend], rule)
+		if rule.Percentage == 0 {
+			return SelectedBackend{Backend: rule.Backend, Rule: &rule}
+		}
 	}
 
-	// Calculate total percentage for each backend
+	// If we reach here, we only have percentage-based rules
 	backendPercentages := make(map[string]float64)
-	for backend, rules := range backendRules {
-		totalPercentage := 0.0
-		for _, rule := range rules {
-			if rule.Percentage > 0 {
-				totalPercentage += rule.Percentage
-			} else {
-				totalPercentage = 100.0
-				break
-			}
-		}
-		backendPercentages[backend] = totalPercentage
+	for _, rule := range matchingRules {
+		backendPercentages[rule.Backend] += rule.Percentage
 	}
 
 	// Select backend based on percentages and rule hash
 	selectedBackend := a.selectBackendByPercentageAndRuleHash(sessionID, backendPercentages, matchingRules)
-	if selectedBackend != "" && len(backendRules[selectedBackend]) > 0 {
-		return SelectedBackend{Backend: selectedBackend, Rule: &backendRules[selectedBackend][0]}
+	for _, rule := range matchingRules {
+		if rule.Backend == selectedBackend {
+			return SelectedBackend{Backend: selectedBackend, Rule: &rule}
+		}
 	}
 
 	// If no backend was selected, use the default backend
@@ -270,7 +264,7 @@ func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backen
 		totalPercentage += percentage
 	}
 
-	scaledHashValue := hashValue * 100.0 // Scale to 0-100 range
+	scaledHashValue := hashValue * totalPercentage // Scale to 0-totalPercentage range
 
 	var cumulativePercentage float64
 	for _, backend := range backends {
