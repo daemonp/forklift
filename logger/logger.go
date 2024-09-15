@@ -1,12 +1,6 @@
 // Package logger provides logging functionality for the Forklift middleware.
 package logger
 
-import (
-	"context"
-
-	"github.com/traefik/traefik/v3/pkg/log"
-)
-
 // Logger is an interface that represents the logging capabilities required by the Forklift middleware.
 type Logger interface {
 	Debugf(format string, args ...interface{})
