@@ -67,17 +67,15 @@ services:
       # Configure the 'forklift-middleware' with the plugin settings
       - "traefik.http.middlewares.forklift-middleware.plugin.forklift.defaultBackend=http://default:5678"
       
-      # Define Routing Rule 0: GET / → echo1 with 50% traffic
+      # Define Routing Rule 0: GET / → echo1
       - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[0].path=/"
       - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[0].method=GET"
       - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[0].backend=http://echo1:5678"
-      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[0].percentage=50"
       
-      # Define Routing Rule 1: GET / → echo2 with 50% traffic
-      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[1].path=/"
+      # Define Routing Rule 1: GET /v2 → echo2
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[1].path=/v2"
       - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[1].method=GET"
       - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[1].backend=http://echo2:5678"
-      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[1].percentage=50"
       
       # Define Routing Rule 2: GET /v3 → echo3
       - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[2].path=/v3"
