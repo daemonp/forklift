@@ -232,17 +232,18 @@ func TestForkliftMiddleware(t *testing.T) {
 		hitsEcho1 := 0
 		hitsEcho2 := 0
 
-		for i := 0; i < totalRequests; i++ {
+		for range totalRequests {
 			req := createTestRequest(t, "GET", "/", nil, nil)
 			rr := httptest.NewRecorder()
 			middleware.ServeHTTP(rr, req)
 
 			body := strings.TrimSpace(rr.Body.String())
-			if body == "Hello from V1" {
+			switch body {
+			case "Hello from V1":
 				hitsEcho1++
-			} else if body == "Hello from V2" {
+			case "Hello from V2":
 				hitsEcho2++
-			} else {
+			default:
 				t.Errorf("Unexpected response body: %v", body)
 			}
 		}
@@ -301,7 +302,7 @@ func TestForkliftMiddleware(t *testing.T) {
 
 		// Make multiple requests with the same session ID
 		expectedBody := strings.TrimSpace(rr.Body.String())
-		for i := 0; i < 10; i++ {
+		for range 10 {
 			req := createTestRequest(t, "GET", "/", nil, nil)
 			req.AddCookie(&http.Cookie{
 				Name:  sessionCookieName,
