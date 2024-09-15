@@ -96,7 +96,7 @@ func CreateConfig() *config.Config {
 func New(ctx context.Context, next http.Handler, cfg *config.Config, name string) (http.Handler, error) {
 	logger := logger.NewLogger("forklift")
 	if cfg.Debug {
-		logger.Printf("Creating new Forklift middleware with config: %+v", cfg)
+		logger.Debugf("Creating new Forklift middleware with config: %+v", cfg)
 	}
 	forklift, err := NewForklift(ctx, next, cfg, name)
 	if err != nil {
@@ -129,7 +129,7 @@ func NewForklift(ctx context.Context, next http.Handler, cfg *config.Config, nam
 	ruleEngine := &RuleEngine{
 		config: cfg,
 		cache:  &sync.Map{},
-		logger: logger.(log.Logger),
+		logger: logger,
 	}
 
 	go ruleEngine.cleanupCache()
@@ -139,7 +139,7 @@ func NewForklift(ctx context.Context, next http.Handler, cfg *config.Config, nam
 		config:     cfg,
 		name:       name,
 		ruleEngine: ruleEngine,
-		logger:     logger.(log.Logger),
+		logger:     logger,
 	}
 
 	forklift.logger.Printf("Starting Forklift middleware: %s", name)
@@ -456,7 +456,7 @@ func (re *RuleEngine) checkCondition(req *http.Request, condition RuleCondition)
 
 func (re *RuleEngine) checkForm(req *http.Request, condition RuleCondition) bool {
 	if err := req.ParseForm(); err != nil {
-		re.config.Logger.Printf("Error parsing form data: %v", err)
+		re.logger.Printf("Error parsing form data: %v", err)
 		return false
 	}
 	formValue := req.PostFormValue(condition.Parameter)
@@ -588,15 +588,3 @@ func (l DefaultLogger) Infof(format string, v ...interface{}) {
 	_, _ = fmt.Fprintf(os.Stdout, "level=info msg=\""+format+"\"\n", v...)
 }
 
-// SetLogger sets the logger for the middleware.
-func (c *config.Config) SetLogger(l Logger) {
-	c.Logger = l
-}
-
-// GetLogger returns the current logger instance.
-func (c *config.Config) GetLogger() Logger {
-	if c.Logger == nil {
-		return &DefaultLogger{}
-	}
-	return c.Logger
-}
