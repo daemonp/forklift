@@ -22,6 +22,10 @@ import (
 	"github.com/daemonp/forklift/logger"
 )
 
+// Alias config types for convenience
+type RoutingRule = config.RoutingRule
+type RuleCondition = config.RuleCondition
+
 var (
 	errEmptyConfig           = errors.New("empty configuration")
 	errMissingDefaultBackend = errors.New("missing DefaultBackend")
