@@ -2,7 +2,7 @@
 package logger
 
 import (
-	"github.com/traefik/traefik/v3/pkg/log"
+	"github.com/traefik/traefik/v3/pkg/logs"
 )
 
 // NewLogger initializes and returns a Traefik v3 compatible logger.
