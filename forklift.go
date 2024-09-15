@@ -21,11 +21,9 @@ import (
 	"github.com/daemonp/forklift/logger"
 )
 
-// Alias config types for convenience.
+// Alias RoutingRule config types cuz lazy.
 type (
-	// RoutingRule represents a routing rule configuration
-	RoutingRule = config.RoutingRule
-	// RuleCondition represents a condition for a routing rule
+	RoutingRule   = config.RoutingRule
 	RuleCondition = config.RuleCondition
 )
 
@@ -35,21 +33,14 @@ var (
 	errInvalidPercentage     = errors.New("invalid percentage: must be between 0 and 100")
 )
 
-// matchPathPrefix checks if the request path matches the rule's path prefix.
-func matchPathPrefix(reqPath, rulePrefix string) bool {
-	return strings.HasPrefix(reqPath, rulePrefix)
-}
-
 const (
 	sessionCookieName    = "forklift_id"
-	sessionCookieMaxAge  = 86400 * 30 // 30 days
+	sessionCookieMaxAge  = 86400 * 30
 	cacheDuration        = 24 * time.Hour
 	cacheCleanupInterval = 10 * time.Minute
 	maxSessionIDLength   = 128
 	defaultTimeout       = 10 * time.Second
-	fullPercentage       = 100.0
 	hashModulo           = 10000
-	hashDivisor          = 100.0
 	sessionIDByteLength  = 32
 	maxPercentage        = 100.0
 )
@@ -70,28 +61,13 @@ type RuleEngine struct {
 	logger logger.Logger
 }
 
-// NewRuleEngine creates a new RuleEngine instance
+// NewRuleEngine creates a new RuleEngine instance.
 func NewRuleEngine(cfg *config.Config, logger logger.Logger) *RuleEngine {
 	return &RuleEngine{
 		config: cfg,
 		cache:  &sync.Map{},
 		logger: logger,
 	}
-}
-
-// backendInfo stores information about a backend.
-type backendInfo struct {
-	Percentage float64
-	Rules      []*config.RoutingRule
-}
-
-// backendEntry represents a backend with its selection bounds.
-type backendEntry struct {
-	Backend    string
-	Info       *backendInfo
-	LowerBound float64
-	UpperBound float64
-	RuleHash   uint32
 }
 
 // CreateConfig creates a new Config.
@@ -234,7 +210,7 @@ func (a *Forklift) handleSessionID(rw http.ResponseWriter, req *http.Request) st
 	return sessionID
 }
 
-// SelectedBackend represents the selected backend and associated rule
+// SelectedBackend represents the selected backend and associated rule.
 type SelectedBackend struct {
 	Backend string
 	Rule    *RoutingRule
