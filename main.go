@@ -33,6 +33,11 @@ type Config struct {
 	Logger         Logger
 }
 
+// matchPathPrefix checks if the request path matches the rule's path prefix
+func matchPathPrefix(reqPath, rulePrefix string) bool {
+	return strings.HasPrefix(reqPath, rulePrefix)
+}
+
 const (
 	sessionCookieName    = "forklift_id"
 	sessionCookieMaxAge  = 86400 * 30 // 30 days
@@ -409,7 +414,7 @@ func (re *RuleEngine) ruleMatches(req *http.Request, rule RoutingRule) bool {
 	if rule.Path != "" && rule.Path != req.URL.Path {
 		return false
 	}
-	if rule.PathPrefix != "" && !strings.HasPrefix(req.URL.Path, rule.PathPrefix) {
+	if rule.PathPrefix != "" && !matchPathPrefix(req.URL.Path, rule.PathPrefix) {
 		return false
 	}
 	if rule.Method != "" && rule.Method != req.Method {

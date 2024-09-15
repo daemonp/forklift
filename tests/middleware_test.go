@@ -91,6 +91,12 @@ func TestForkliftMiddleware(t *testing.T) {
 				},
 			},
 			{
+				PathPrefix: "/api",
+				Method:     "GET",
+				Backend:    echo2Server.URL,
+				Priority:   1,
+			},
+			{
 				Path:       "/",
 				Method:     "POST",
 				Backend:    echo3Server.URL,
@@ -192,7 +198,7 @@ func TestForkliftMiddleware(t *testing.T) {
 			method:           "GET",
 			path:             "/api/users",
 			expectedStatuses: []int{http.StatusOK},
-			expectedBodies:   []string{"Hello from V2"}, // Assuming a rule for /api prefix to echo2
+			expectedBodies:   []string{"Hello from V2"},
 		},
 	}
 
