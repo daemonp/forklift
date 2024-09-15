@@ -15,6 +15,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"yaml"
 
 	"github.com/daemonp/forklift/config"
 	"github.com/daemonp/forklift/logger"
