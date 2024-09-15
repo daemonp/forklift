@@ -265,7 +265,11 @@ func (a *Forklift) shouldApplyPercentage(sessionID string, percentage float64) b
 	h.Write([]byte(sessionID))
 	hashValue := h.Sum32()
 	normalizedHash := float64(hashValue) / float64(^uint32(0))
-	return normalizedHash < percentage/100.0
+	result := normalizedHash < percentage/100.0
+	if a.config.Debug {
+		a.logger.Debugf("Session ID: %s, Percentage: %.2f, Normalized Hash: %.4f, Result: %v", sessionID, percentage, normalizedHash, result)
+	}
+	return result
 }
 
 func (a *Forklift) getMatchingRules(req *http.Request) []RoutingRule {
@@ -451,8 +455,13 @@ func (re *RuleEngine) ruleMatches(req *http.Request, rule RoutingRule) bool {
 		return false
 	}
 	// Check path prefix match
-	if rule.PathPrefix != "" && !strings.HasPrefix(req.URL.Path, rule.PathPrefix) {
-		return false
+	if rule.PathPrefix != "" {
+		if !strings.HasPrefix(req.URL.Path, rule.PathPrefix) {
+			return false
+		}
+		if re.config.Debug {
+			re.logger.Debugf("Path prefix match: %s for path: %s", rule.PathPrefix, req.URL.Path)
+		}
 	}
 	// Check method match
 	if rule.Method != "" && rule.Method != req.Method {
@@ -536,7 +545,12 @@ func (re *RuleEngine) checkCookie(req *http.Request, condition RuleCondition) bo
 	if err != nil {
 		return false
 	}
-	return compareValues(cookie.Value, condition.Operator, condition.Value)
+	result := compareValues(cookie.Value, condition.Operator, condition.Value)
+	if re.config.Debug {
+		re.logger.Debugf("Cookie %s value: %s", condition.Parameter, cookie.Value)
+		re.logger.Debugf("Cookie condition result: %v", result)
+	}
+	return result
 }
 
 // compareValues compares two string values based on the given operator.
