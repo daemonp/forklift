@@ -14,58 +14,69 @@ import (
 const sessionCookieName = "forklift_id"
 
 func TestForkliftMiddleware(t *testing.T) {
-	// Create mock servers
-	defaultServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("Default Backend"))
-	}))
-	defer defaultServer.Close()
+	servers := setupMockServers(t)
+	defer closeMockServers(servers)
 
-	echo1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("Hello from V1"))
-	}))
-	defer echo1Server.Close()
+	config := createTestConfig(servers)
+	middleware := createMiddleware(t, config)
 
-	echo2Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("Hello from V2"))
-	}))
-	defer echo2Server.Close()
+	runBasicTests(t, middleware)
+	runPercentageBasedRoutingTest(t, middleware)
+	runDefaultBackendTest(t, middleware)
+	runSessionAffinityTest(t, middleware)
+}
 
-	echo3Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("Hello from V3"))
-	}))
-	defer echo3Server.Close()
+func setupMockServers(t *testing.T) map[string]*httptest.Server {
+	t.Helper()
+	servers := make(map[string]*httptest.Server)
+	servers["default"] = createMockServer("Default Backend")
+	servers["echo1"] = createMockServer("Hello from V1")
+	servers["echo2"] = createMockServer("Hello from V2")
+	servers["echo3"] = createMockServer("Hello from V3")
+	return servers
+}
 
-	config := &forklift.Config{
-		DefaultBackend: defaultServer.URL,
+func createMockServer(response string) *httptest.Server {
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(response))
+	}))
+}
+
+func closeMockServers(servers map[string]*httptest.Server) {
+	for _, server := range servers {
+		server.Close()
+	}
+}
+
+func createTestConfig(servers map[string]*httptest.Server) *forklift.Config {
+	return &forklift.Config{
+		DefaultBackend: servers["default"].URL,
 		Rules: []forklift.RoutingRule{
 			{
 				Path:       "/",
 				Method:     "GET",
-				Backend:    echo1Server.URL,
+				Backend:    servers["echo1"].URL,
 				Percentage: 50,
 				Priority:   1,
 			},
 			{
 				Path:       "/",
 				Method:     "GET",
-				Backend:    echo2Server.URL,
+				Backend:    servers["echo2"].URL,
 				Percentage: 50,
 				Priority:   1,
 			},
 			{
 				Path:     "/v3",
 				Method:   "GET",
-				Backend:  echo3Server.URL,
+				Backend:  servers["echo3"].URL,
 				Priority: 1,
 			},
 			{
 				Path:     "/",
 				Method:   "POST",
-				Backend:  echo2Server.URL,
+				Backend:  servers["echo2"].URL,
 				Priority: 1,
 				Conditions: []forklift.RuleCondition{
 					{
@@ -79,7 +90,7 @@ func TestForkliftMiddleware(t *testing.T) {
 			{
 				Path:     "/query-test",
 				Method:   "GET",
-				Backend:  echo2Server.URL,
+				Backend:  servers["echo2"].URL,
 				Priority: 1,
 				Conditions: []forklift.RuleCondition{
 					{
@@ -93,13 +104,13 @@ func TestForkliftMiddleware(t *testing.T) {
 			{
 				PathPrefix: "/api",
 				Method:     "GET",
-				Backend:    echo2Server.URL,
+				Backend:    servers["echo2"].URL,
 				Priority:   1,
 			},
 			{
 				Path:       "/",
 				Method:     "POST",
-				Backend:    echo3Server.URL,
+				Backend:    servers["echo3"].URL,
 				Percentage: 10,
 				Priority:   1,
 				Conditions: []forklift.RuleCondition{
@@ -113,7 +124,10 @@ func TestForkliftMiddleware(t *testing.T) {
 			},
 		},
 	}
+}
 
+func createMiddleware(t *testing.T, config *forklift.Config) *forklift.Forklift {
+	t.Helper()
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("Next handler"))
@@ -123,7 +137,11 @@ func TestForkliftMiddleware(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create Forklift middleware: %v", err)
 	}
+	return middleware
+}
 
+func runBasicTests(t *testing.T, middleware *forklift.Forklift) {
+	t.Helper()
 	tests := []struct {
 		name             string
 		method           string
@@ -202,8 +220,6 @@ func TestForkliftMiddleware(t *testing.T) {
 		},
 	}
 
-	// client := &http.Client{}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := createTestRequest(t, tt.method, tt.path, tt.headers, tt.body)
@@ -225,8 +241,10 @@ func TestForkliftMiddleware(t *testing.T) {
 			}
 		})
 	}
+}
 
-	// Additional test for percentage-based routing
+func runPercentageBasedRoutingTest(t *testing.T, middleware *forklift.Forklift) {
+	t.Helper()
 	t.Run("Percentage-based routing for GET /", func(t *testing.T) {
 		totalRequests := 1000
 		hitsEcho1 := 0
@@ -260,8 +278,10 @@ func TestForkliftMiddleware(t *testing.T) {
 			t.Errorf("Expected Echo2 to receive approximately 50%% of traffic, got %.2f%%", percentageEcho2)
 		}
 	})
+}
 
-	// Additional test for default backend routing
+func runDefaultBackendTest(t *testing.T, middleware *forklift.Forklift) {
+	t.Helper()
 	t.Run("Routing to default backend when no rules match", func(t *testing.T) {
 		req := createTestRequest(t, "GET", "/non-existent", nil, nil)
 		rr := httptest.NewRecorder()
@@ -276,8 +296,10 @@ func TestForkliftMiddleware(t *testing.T) {
 			t.Errorf("Expected body 'Default Backend', got '%v'", body)
 		}
 	})
+}
 
-	// Additional test for session affinity
+func runSessionAffinityTest(t *testing.T, middleware *forklift.Forklift) {
+	t.Helper()
 	t.Run("Session affinity test", func(t *testing.T) {
 		req := createTestRequest(t, "GET", "/", nil, nil)
 		rr := httptest.NewRecorder()
@@ -320,6 +342,7 @@ func TestForkliftMiddleware(t *testing.T) {
 }
 
 func createTestRequest(t *testing.T, method, path string, headers map[string]string, body url.Values) *http.Request {
+	t.Helper()
 	var req *http.Request
 	var err error
 

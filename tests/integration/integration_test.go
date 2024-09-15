@@ -12,6 +12,7 @@ const (
 )
 
 func closeBody(t *testing.T, body io.Closer) {
+	t.Helper()
 	if err := body.Close(); err != nil {
 		t.Errorf("Error closing response body: %v", err)
 	}
