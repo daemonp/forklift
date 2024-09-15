@@ -65,6 +65,14 @@ type RuleEngine struct {
 	logger log.Logger
 }
 
+func NewRuleEngine(cfg *config.Config, logger log.Logger) *RuleEngine {
+	return &RuleEngine{
+		config: cfg,
+		cache:  &sync.Map{},
+		logger: logger,
+	}
+}
+
 // backendInfo stores information about a backend.
 type backendInfo struct {
 	Percentage float64
@@ -88,7 +96,7 @@ func CreateConfig() *config.Config {
 func New(ctx context.Context, next http.Handler, cfg *config.Config, name string) (http.Handler, error) {
 	logger := logger.NewLogger("forklift")
 	if cfg.Debug {
-		logger.Debugf("Creating new Forklift middleware with config: %+v", cfg)
+		logger.Printf("Creating new Forklift middleware with config: %+v", cfg)
 	}
 	forklift, err := NewForklift(ctx, next, cfg, name)
 	if err != nil {
@@ -121,7 +129,7 @@ func NewForklift(ctx context.Context, next http.Handler, cfg *config.Config, nam
 	ruleEngine := &RuleEngine{
 		config: cfg,
 		cache:  &sync.Map{},
-		logger: logger,
+		logger: logger.(log.Logger),
 	}
 
 	go ruleEngine.cleanupCache()
@@ -131,7 +139,7 @@ func NewForklift(ctx context.Context, next http.Handler, cfg *config.Config, nam
 		config:     cfg,
 		name:       name,
 		ruleEngine: ruleEngine,
-		logger:     logger,
+		logger:     logger.(log.Logger),
 	}
 
 	forklift.logger.Printf("Starting Forklift middleware: %s", name)
@@ -166,9 +174,9 @@ func (a *Forklift) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	backend := selected.Backend
 	selectedRule := selected.Rule
 
-	if a.debug {
+	if a.config.Debug {
 		rw.Header().Set("X-Selected-Backend", backend)
-		a.logger.Infof("Routing request to backend: %s", backend)
+		a.logger.Printf("Routing request to backend: %s", backend)
 	}
 
 	proxyReq, err := a.createProxyRequest(req, backend, selectedRule)
@@ -184,7 +192,7 @@ func (a *Forklift) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 func (a *Forklift) handleSessionID(rw http.ResponseWriter, req *http.Request) string {
 	sessionID := getOrCreateSessionID(rw, req)
 	if sessionID == "" {
-		a.logger.Infof("Error handling session ID")
+		a.logger.Printf("Error handling session ID")
 		http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
 		return ""
 	}
@@ -412,7 +420,7 @@ func (re *RuleEngine) ruleMatches(req *http.Request, rule RoutingRule) bool {
 		return false
 	}
 	if re.config.Debug {
-		re.config.Logger.Infof("Checking conditions for path: %s", req.URL.Path)
+		re.logger.Printf("Checking conditions for path: %s", req.URL.Path)
 	}
 	return re.checkConditions(req, rule.Conditions)
 }
@@ -441,7 +449,7 @@ func (re *RuleEngine) checkCondition(req *http.Request, condition RuleCondition)
 		result = re.checkForm(req, condition)
 	}
 	if re.config.Debug {
-		re.config.Logger.Infof("Condition check result for %s %s: %v", condition.Type, condition.Parameter, result)
+		re.logger.Printf("Condition check result for %s %s: %v", condition.Type, condition.Parameter, result)
 	}
 	return result
 }
@@ -453,11 +461,11 @@ func (re *RuleEngine) checkForm(req *http.Request, condition RuleCondition) bool
 	}
 	formValue := req.PostFormValue(condition.Parameter)
 	if re.config.Debug {
-		re.config.Logger.Infof("Form parameter %s: %s", condition.Parameter, formValue)
+		re.logger.Printf("Form parameter %s: %s", condition.Parameter, formValue)
 	}
 	result := compareValues(formValue, condition.Operator, condition.Value)
 	if re.config.Debug {
-		re.config.Logger.Infof("Form condition result: %v", result)
+		re.logger.Printf("Form condition result: %v", result)
 	}
 	return result
 }
@@ -470,12 +478,12 @@ func (re *RuleEngine) checkHeader(req *http.Request, condition RuleCondition) bo
 func (re *RuleEngine) checkQuery(req *http.Request, condition RuleCondition) bool {
 	queryValue := req.URL.Query().Get(condition.QueryParam)
 	if re.config.Debug {
-		re.config.Logger.Infof("Query parameter %s: %s", condition.QueryParam, queryValue)
-		re.config.Logger.Infof("Comparing query value: %s %s %s", queryValue, condition.Operator, condition.Value)
+		re.logger.Printf("Query parameter %s: %s", condition.QueryParam, queryValue)
+		re.logger.Printf("Comparing query value: %s %s %s", queryValue, condition.Operator, condition.Value)
 	}
 	result := compareValues(queryValue, condition.Operator, condition.Value)
 	if re.config.Debug {
-		re.config.Logger.Infof("Query condition result: %v", result)
+		re.logger.Printf("Query condition result: %v", result)
 	}
 	return result
 }
