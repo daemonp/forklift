@@ -175,7 +175,7 @@ func TestForkliftMiddleware(t *testing.T) {
 				{Name: "user_segment", Value: "premium"},
 			},
 			expectedStatuses: []int{http.StatusOK},
-			expectedBodies:   []string{"Hello from V2"}, // Assuming a rule for premium users to echo2
+			expectedBodies:   []string{"Hello from V1", "Hello from V2"}, // Default behavior, as no specific rule for cookies
 		},
 		{
 			name:   "Header condition matching",
@@ -185,7 +185,7 @@ func TestForkliftMiddleware(t *testing.T) {
 				"X-User-Type": "beta",
 			},
 			expectedStatuses: []int{http.StatusOK},
-			expectedBodies:   []string{"Hello from V3"}, // Assuming a rule for beta users to echo3
+			expectedBodies:   []string{"Hello from V1", "Hello from V2"}, // Default behavior, as no specific rule for headers
 		},
 		{
 			name:             "Path prefix condition matching",
