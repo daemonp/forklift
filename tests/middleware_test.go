@@ -261,14 +261,14 @@ func runPercentageBasedRoutingTest(t *testing.T, middleware http.Handler) {
 			hitsEcho1, hitsEcho2 := 0, 0
 
 			// Warm-up phase
-			for i := 0; i < warmupRequests; i++ {
+			for range warmupRequests {
 				req := createTestRequest(t, "GET", "/", nil, nil)
 				rr := httptest.NewRecorder()
 				middleware.ServeHTTP(rr, req)
 			}
 
 			// Actual test
-			for i := 0; i < totalRequests; i++ {
+			for range totalRequests {
 				req := createTestRequest(t, "GET", "/", nil, nil)
 				rr := httptest.NewRecorder()
 				middleware.ServeHTTP(rr, req)
@@ -291,7 +291,7 @@ func runPercentageBasedRoutingTest(t *testing.T, middleware http.Handler) {
 		}
 
 		var totalPercentageEcho1, totalPercentageEcho2 float64
-		for i := 0; i < testRuns; i++ {
+		for i := range testRuns {
 			percentageEcho1, percentageEcho2 := runTest()
 			totalPercentageEcho1 += percentageEcho1
 			totalPercentageEcho2 += percentageEcho2
@@ -339,13 +339,13 @@ func runSessionAffinityTest(t *testing.T, middleware http.Handler) {
 		backendCounts := make(map[string]int)
 
 		// Warm-up phase
-		for i := 0; i < warmupSessions; i++ {
+		for range warmupSessions {
 			req := createTestRequest(t, "GET", "/", nil, nil)
 			rr := httptest.NewRecorder()
 			middleware.ServeHTTP(rr, req)
 		}
 
-		for i := 0; i < totalSessions; i++ {
+		for i := range totalSessions {
 			req := createTestRequest(t, "GET", "/", nil, nil)
 			rr := httptest.NewRecorder()
 			middleware.ServeHTTP(rr, req)
@@ -368,7 +368,7 @@ func runSessionAffinityTest(t *testing.T, middleware http.Handler) {
 			backendCounts[body]++
 
 			// Make additional requests with the same session ID
-			for j := 0; j < requestsPerSession; j++ {
+			for range requestsPerSession {
 				req := createTestRequest(t, "GET", "/", nil, nil)
 				req.AddCookie(&http.Cookie{
 					Name:  sessionCookieName,
@@ -394,6 +394,7 @@ func runSessionAffinityTest(t *testing.T, middleware http.Handler) {
 }
 
 func logBackendDistribution(t *testing.T, backendCounts map[string]int, totalSessions int, epsilon float64) {
+	t.Helper()
 	for backend, count := range backendCounts {
 		percentage := float64(count) / float64(totalSessions) * 100
 		t.Logf("Backend %s: %.2f%% (%d/%d)", backend, percentage, count, totalSessions)
