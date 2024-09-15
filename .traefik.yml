@@ -4,6 +4,9 @@ import: github.com/daemonp/forklift
 summary: 'A/B testing and traffic splitting middleware for Traefik'
 testData:
   defaultBackend: http://localhost:8080
+  defaultBackendEnv: FORKLIFT_DEFAULT_BACKEND
+  debugEnv: FORKLIFT_DEBUG
+  configFile: /etc/traefik/forklift.yaml
   rules:
     - path: /test
       backend: http://localhost:8081
