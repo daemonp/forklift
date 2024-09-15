@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
+	"log"
 	"net/http"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,7 +20,6 @@ import (
 
 	"github.com/daemonp/forklift/config"
 	"github.com/daemonp/forklift/logger"
-	"github.com/traefik/traefik/v3/pkg/log"
 )
 
 var (
