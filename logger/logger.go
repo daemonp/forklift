@@ -2,7 +2,8 @@
 package logger
 
 import (
-	"github.com/rs/zerolog/log"
+	"github.com/rs/zerolog"
+	"github.com/traefik/traefik/v3/pkg/log"
 )
 
 // Logger is an interface that represents the logging capabilities required by the Forklift middleware.
@@ -20,7 +21,7 @@ func NewLogger(pluginName string) Logger {
 }
 
 type traefikLogger struct {
-	logger log.Logger
+	logger zerolog.Logger
 }
 
 func (t *traefikLogger) Debugf(format string, args ...interface{}) {
