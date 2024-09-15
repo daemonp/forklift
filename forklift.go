@@ -1,4 +1,4 @@
-// Forklift middleware plugin for A/B testing
+// Package forklift provides a middleware plugin for A/B testing
 package forklift
 
 import (
@@ -23,7 +23,9 @@ import (
 
 // Alias config types for convenience.
 type (
-	RoutingRule   = config.RoutingRule
+	// RoutingRule represents a routing rule configuration
+	RoutingRule = config.RoutingRule
+	// RuleCondition represents a condition for a routing rule
 	RuleCondition = config.RuleCondition
 )
 
@@ -66,6 +68,7 @@ type RuleEngine struct {
 	logger logger.Logger
 }
 
+// NewRuleEngine creates a new RuleEngine instance
 func NewRuleEngine(cfg *config.Config, logger logger.Logger) *RuleEngine {
 	return &RuleEngine{
 		config: cfg,
@@ -119,7 +122,7 @@ func New(ctx context.Context, next http.Handler, cfg interface{}, name string) (
 }
 
 // NewForklift creates a new middleware.
-func NewForklift(ctx context.Context, next http.Handler, cfg *config.Config, name string) (*Forklift, error) {
+func NewForklift(_ context.Context, next http.Handler, cfg *config.Config, name string) (*Forklift, error) {
 	if cfg == nil {
 		return nil, errEmptyConfig
 	}
@@ -226,6 +229,7 @@ func (a *Forklift) handleSessionID(rw http.ResponseWriter, req *http.Request) st
 	return sessionID
 }
 
+// SelectedBackend represents the selected backend and associated rule
 type SelectedBackend struct {
 	Backend string
 	Rule    *RoutingRule
