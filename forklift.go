@@ -464,14 +464,14 @@ func (re *RuleEngine) matchPath(req *http.Request, rule RoutingRule) bool {
 
 func (re *RuleEngine) matchMethod(req *http.Request, rule RoutingRule) bool {
 	if rule.Method != "" && rule.Method != req.Method {
-		re.logDebug("Method mismatch: %s != %s", rule.Method, req.Method)
+		re.logDebugf("Method mismatch: %s != %s", rule.Method, req.Method)
 		return false
 	}
 	return true
 }
 
 func (re *RuleEngine) matchConditions(req *http.Request, rule RoutingRule) bool {
-	re.logDebug("Checking conditions for path: %s", req.URL.Path)
+	re.logDebugf("Checking conditions for path: %s", req.URL.Path)
 	if len(rule.Conditions) == 0 {
 		return true
 	}
