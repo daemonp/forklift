@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
-	"log"
 	"net/http"
 	"os"
 	"sort"
@@ -55,17 +54,17 @@ type Forklift struct {
 	config     *config.Config
 	name       string
 	ruleEngine *RuleEngine
-	logger     log.Logger
+	logger     logger.Logger
 }
 
 // RuleEngine handles rule matching and caching.
 type RuleEngine struct {
 	config *config.Config
 	cache  *sync.Map
-	logger log.Logger
+	logger logger.Logger
 }
 
-func NewRuleEngine(cfg *config.Config, logger log.Logger) *RuleEngine {
+func NewRuleEngine(cfg *config.Config, logger logger.Logger) *RuleEngine {
 	return &RuleEngine{
 		config: cfg,
 		cache:  &sync.Map{},
@@ -568,23 +567,4 @@ func getOrCreateSessionID(rw http.ResponseWriter, req *http.Request) string {
 	return sessionID
 }
 
-// Logger is the interface for logging in the middleware.
-// Traefik only accepts stdin/stdout for logging.
-type Logger interface {
-	Printf(format string, v ...interface{})
-	Infof(format string, v ...interface{})
-}
-
-// DefaultLogger is the default implementation of the Logger interface.
-type DefaultLogger struct{}
-
-// Printf logs a formatted message.
-func (l DefaultLogger) Printf(format string, v ...interface{}) {
-	_, _ = fmt.Fprintf(os.Stdout, format+"\n", v...)
-}
-
-// Infof logs a formatted info message.
-func (l DefaultLogger) Infof(format string, v ...interface{}) {
-	_, _ = fmt.Fprintf(os.Stdout, "level=info msg=\""+format+"\"\n", v...)
-}
 
