@@ -2,9 +2,8 @@
 package logger
 
 import (
+	"log"
 	"os"
-
-	"github.com/rs/zerolog"
 )
 
 // Logger is an interface that represents the logging capabilities required by the Forklift middleware.
@@ -14,25 +13,25 @@ type Logger interface {
 	Errorf(format string, args ...interface{})
 }
 
-// NewLogger initializes and returns a Traefik v3 compatible logger.
+// NewLogger initializes and returns a simple logger.
 func NewLogger(pluginName string) Logger {
-	return &traefikLogger{
-		logger: zerolog.New(os.Stdout).With().Str("plugin", pluginName).Logger(),
+	return &simpleLogger{
+		logger: log.New(os.Stdout, "plugin:"+pluginName+" ", log.LstdFlags),
 	}
 }
 
-type traefikLogger struct {
-	logger zerolog.Logger
+type simpleLogger struct {
+	logger *log.Logger
 }
 
-func (t *traefikLogger) Debugf(format string, args ...interface{}) {
-	t.logger.Debug().Msgf(format, args...)
+func (s *simpleLogger) Debugf(format string, args ...interface{}) {
+	s.logger.Printf("DEBUG: "+format, args...)
 }
 
-func (t *traefikLogger) Infof(format string, args ...interface{}) {
-	t.logger.Info().Msgf(format, args...)
+func (s *simpleLogger) Infof(format string, args ...interface{}) {
+	s.logger.Printf("INFO: "+format, args...)
 }
 
-func (t *traefikLogger) Errorf(format string, args ...interface{}) {
-	t.logger.Error().Msgf(format, args...)
+func (s *simpleLogger) Errorf(format string, args ...interface{}) {
+	s.logger.Printf("ERROR: "+format, args...)
 }
