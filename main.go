@@ -33,7 +33,7 @@ type Config struct {
 	Logger         Logger
 }
 
-// matchPathPrefix checks if the request path matches the rule's path prefix
+// matchPathPrefix checks if the request path matches the rule's path prefix.
 func matchPathPrefix(reqPath, rulePrefix string) bool {
 	return strings.HasPrefix(reqPath, rulePrefix)
 }
@@ -45,6 +45,9 @@ const (
 	cacheCleanupInterval = 10 * time.Minute
 	maxSessionIDLength   = 128
 	defaultTimeout       = 10 * time.Second
+	fullPercentage       = 100.0
+	hashModulo           = 10000
+	hashDivisor          = 100.0
 )
 
 // RoutingRule defines the structure for routing rules in the middleware.
@@ -262,8 +265,8 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 	}
 
 	// If total percentage is less than 100, allocate remaining to default backend
-	if totalPercentage < 100 {
-		remaining := 100 - totalPercentage
+	if totalPercentage < fullPercentage {
+		remaining := fullPercentage - totalPercentage
 		if _, exists := backendPercentages[a.config.DefaultBackend]; !exists {
 			backendPercentages[a.config.DefaultBackend] = &backendInfo{
 				Percentage: 0,
@@ -275,11 +278,11 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 	}
 
 	// Normalize percentages if total > 100
-	if totalPercentage > 100 {
+	if totalPercentage > fullPercentage {
 		for _, info := range backendPercentages {
 			info.Percentage = info.Percentage * 100 / totalPercentage
 		}
-		totalPercentage = 100
+		// We don't need to reassign totalPercentage here as it's not used afterwards
 	}
 
 	// Build cumulative percentages
@@ -290,7 +293,7 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 		UpperBound float64
 	}
 	// Collect backends into a slice
-	var backends []backendEntry
+	backends := make([]backendEntry, 0, len(backendPercentages))
 	for backend, info := range backendPercentages {
 		backends = append(backends, backendEntry{
 			Backend: backend,
@@ -319,7 +322,7 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 		return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
 	}
 	hashValue := h.Sum32()
-	hashPercentage := float64(hashValue%10000) / 100.0 // Gives a value between 0.0 and 100.0
+	hashPercentage := float64(hashValue%hashModulo) / hashDivisor // Gives a value between 0.0 and 100.0
 
 	// Select backend
 	for _, be := range backends {
