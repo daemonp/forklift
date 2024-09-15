@@ -89,15 +89,19 @@ func TestIntegration(t *testing.T) {
 
 	// Additional test for percentage-based routing
 	t.Run("Percentage-based routing for GET /", func(t *testing.T) {
-		totalRequests := 1000
+		totalRequests := 10000
 		hitsEcho1 := 0
 		hitsEcho2 := 0
 
-		for range totalRequests {
+		for i := 0; i < totalRequests; i++ {
 			req, err := http.NewRequest(http.MethodGet, traefikURL+"/", nil)
 			if err != nil {
 				t.Fatalf("Failed to create request: %v", err)
 			}
+
+			// Add a unique session ID for each request
+			sessionID := fmt.Sprintf("session-%d", i)
+			req.Header.Set("Cookie", fmt.Sprintf("SESSION=%s", sessionID))
 
 			resp, err := client.Do(req)
 			if err != nil {
@@ -125,7 +129,7 @@ func TestIntegration(t *testing.T) {
 
 		t.Logf("Echo1: %.2f%%, Echo2: %.2f%%", percentageEcho1, percentageEcho2)
 
-		tolerance := 5.0 // Allow for 5% tolerance
+		tolerance := 2.0 // Allow for 2% tolerance
 		if percentageEcho1 < 50-tolerance || percentageEcho1 > 50+tolerance {
 			t.Errorf("Expected Echo1 to receive approximately 50%% of traffic, got %.2f%%", percentageEcho1)
 		}
