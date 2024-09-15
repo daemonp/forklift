@@ -141,7 +141,7 @@ func NewForklift(ctx context.Context, next http.Handler, cfg *config.Config, nam
 		logger:     logger,
 	}
 
-	forklift.logger.Printf("Starting Forklift middleware: %s", name)
+	forklift.logger.Infof("Starting Forklift middleware: %s", name)
 
 	return forklift, nil
 }
@@ -160,8 +160,8 @@ func generateSessionID() (string, error) {
 // ServeHTTP implements the http.Handler interface.
 func (a *Forklift) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	if a.config.Debug {
-		a.logger.Printf("Received request: %s %s", req.Method, req.URL.Path)
-		a.logger.Printf("Headers: %v", req.Header)
+		a.logger.Debugf("Received request: %s %s", req.Method, req.URL.Path)
+		a.logger.Debugf("Headers: %v", req.Header)
 	}
 
 	sessionID := a.handleSessionID(rw, req)
@@ -191,19 +191,19 @@ func (a *Forklift) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 func (a *Forklift) handleSessionID(rw http.ResponseWriter, req *http.Request) string {
 	sessionID := getOrCreateSessionID(rw, req)
 	if sessionID == "" {
-		a.logger.Printf("Error handling session ID")
+		a.logger.Errorf("Error handling session ID")
 		http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
 		return ""
 	}
 
 	if req == nil {
-		a.logger.Printf("Error: Request is nil")
+		a.logger.Errorf("Error: Request is nil")
 		http.Error(rw, "Internal Server Error", http.StatusInternalServerError)
 		return ""
 	}
 
 	if a.config.Debug {
-		a.logger.Printf("Session ID: %s", sessionID)
+		a.logger.Debugf("Session ID: %s", sessionID)
 	}
 
 	return sessionID
@@ -316,7 +316,7 @@ func (a *Forklift) selectBackendFromPercentages(backends []backendEntry, session
 	h := fnv.New32a()
 	_, err := h.Write([]byte(sessionID))
 	if err != nil {
-		a.logger.Printf("Error hashing session ID: %v", err)
+		a.logger.Errorf("Error hashing session ID: %v", err)
 		return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
 	}
 	hashValue := h.Sum32()
@@ -380,7 +380,7 @@ func (a *Forklift) sendProxyRequest(rw http.ResponseWriter, proxyReq *http.Reque
 	}
 	resp, err := client.Do(proxyReq)
 	if err != nil {
-		a.logger.Printf("Error sending request to backend: %v", err)
+		a.logger.Errorf("Error sending request to backend: %v", err)
 		http.Error(rw, "Error sending request to backend", http.StatusBadGateway)
 		return
 	}
@@ -395,15 +395,15 @@ func (a *Forklift) sendProxyRequest(rw http.ResponseWriter, proxyReq *http.Reque
 	rw.WriteHeader(resp.StatusCode)
 	_, err = io.Copy(rw, resp.Body)
 	if err != nil {
-		a.logger.Printf("Error copying response body: %v", err)
+		a.logger.Errorf("Error copying response body: %v", err)
 		// If we've already started writing the response, we can't change the status code
 		// So we'll just log the error and return
 		return
 	}
 
 	if a.config.Debug {
-		a.logger.Printf("Response status code: %d", resp.StatusCode)
-		a.logger.Printf("Response headers: %v", resp.Header)
+		a.logger.Debugf("Response status code: %d", resp.StatusCode)
+		a.logger.Debugf("Response headers: %v", resp.Header)
 	}
 }
 
@@ -419,7 +419,7 @@ func (re *RuleEngine) ruleMatches(req *http.Request, rule RoutingRule) bool {
 		return false
 	}
 	if re.config.Debug {
-		re.logger.Printf("Checking conditions for path: %s", req.URL.Path)
+		re.logger.Debugf("Checking conditions for path: %s", req.URL.Path)
 	}
 	return re.checkConditions(req, rule.Conditions)
 }
@@ -448,23 +448,23 @@ func (re *RuleEngine) checkCondition(req *http.Request, condition RuleCondition)
 		result = re.checkForm(req, condition)
 	}
 	if re.config.Debug {
-		re.logger.Printf("Condition check result for %s %s: %v", condition.Type, condition.Parameter, result)
+		re.logger.Debugf("Condition check result for %s %s: %v", condition.Type, condition.Parameter, result)
 	}
 	return result
 }
 
 func (re *RuleEngine) checkForm(req *http.Request, condition RuleCondition) bool {
 	if err := req.ParseForm(); err != nil {
-		re.logger.Printf("Error parsing form data: %v", err)
+		re.logger.Errorf("Error parsing form data: %v", err)
 		return false
 	}
 	formValue := req.PostFormValue(condition.Parameter)
 	if re.config.Debug {
-		re.logger.Printf("Form parameter %s: %s", condition.Parameter, formValue)
+		re.logger.Debugf("Form parameter %s: %s", condition.Parameter, formValue)
 	}
 	result := compareValues(formValue, condition.Operator, condition.Value)
 	if re.config.Debug {
-		re.logger.Printf("Form condition result: %v", result)
+		re.logger.Debugf("Form condition result: %v", result)
 	}
 	return result
 }
@@ -477,12 +477,12 @@ func (re *RuleEngine) checkHeader(req *http.Request, condition RuleCondition) bo
 func (re *RuleEngine) checkQuery(req *http.Request, condition RuleCondition) bool {
 	queryValue := req.URL.Query().Get(condition.QueryParam)
 	if re.config.Debug {
-		re.logger.Printf("Query parameter %s: %s", condition.QueryParam, queryValue)
-		re.logger.Printf("Comparing query value: %s %s %s", queryValue, condition.Operator, condition.Value)
+		re.logger.Debugf("Query parameter %s: %s", condition.QueryParam, queryValue)
+		re.logger.Debugf("Comparing query value: %s %s %s", queryValue, condition.Operator, condition.Value)
 	}
 	result := compareValues(queryValue, condition.Operator, condition.Value)
 	if re.config.Debug {
-		re.logger.Printf("Query condition result: %v", result)
+		re.logger.Debugf("Query condition result: %v", result)
 	}
 	return result
 }
@@ -550,6 +550,7 @@ func getOrCreateSessionID(rw http.ResponseWriter, req *http.Request) string {
 
 	sessionID, err := generateSessionID()
 	if err != nil {
+		// Note: This is using the standard log package, not the custom logger
 		log.Printf("Error generating session ID: %v", err)
 		return ""
 	}
