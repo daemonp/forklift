@@ -119,7 +119,7 @@ func TestIntegration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			runTest(t, client, tt, cfg)
+			runTest(t, client, tt)
 		})
 	}
 
@@ -177,8 +177,7 @@ func runTest(t *testing.T, client *http.Client, tt struct {
 	body           string
 	headers        map[string]string
 	expectedBodies []string
-}, cfg *config.Config,
-) {
+}) {
 	t.Helper()
 	req, err := createRequest(tt.method, traefikURL+tt.path, tt.body)
 	if err != nil {
@@ -196,7 +195,7 @@ func runTest(t *testing.T, client *http.Client, tt struct {
 	}
 	defer closeBody(t, resp.Body)
 
-	checkResponse(t, resp, tt, cfg)
+	checkResponse(t, resp, tt)
 }
 
 func createRequest(method, urlStr, body string) (*http.Request, error) {
