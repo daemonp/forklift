@@ -109,6 +109,10 @@ func New(ctx context.Context, next http.Handler, cfg interface{}, name string) (
 		return nil, fmt.Errorf("failed to load config: %w", err)
 	}
 
+	if parsedConfig.DefaultBackend == "" {
+		return nil, errMissingDefaultBackend
+	}
+
 	if parsedConfig.Debug {
 		logger.Debugf("Creating new Forklift middleware with config: %+v", parsedConfig)
 	}

@@ -43,7 +43,7 @@ type RuleCondition struct {
 // CreateConfig creates and initializes the plugin configuration.
 func CreateConfig() *Config {
 	return &Config{
-		DefaultBackend: "http://localhost:8080",
+		DefaultBackend: "",
 		Rules:          []RoutingRule{},
 		Debug:          false,
 	}
