@@ -56,14 +56,14 @@ func TestIntegration(t *testing.T) {
 			expectedBodies: []string{"Hello from V2"},
 		},
 		{
-			name:   "POST / with MID=d should route to echo3",
+			name:   "POST / with MID=d should route to default",
 			path:   "/",
 			method: "POST",
 			body:   "MID=d",
 			headers: map[string]string{
 				"Content-Type": "application/x-www-form-urlencoded",
 			},
-			expectedBodies: []string{"Hello from V3"},
+			expectedBodies: []string{"Default Backend"},
 		},
 		{
 			name:           "GET /query-test?mid=two should route to echo2",

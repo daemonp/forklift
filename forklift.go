@@ -249,8 +249,10 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBa
 				return selectedBackend{Backend: rule.Backend, Rule: &rule}
 			}
 		} else {
-			// If no percentage, select this rule
-			return selectedBackend{Backend: rule.Backend, Rule: &rule}
+			// If no percentage or 100%, select this rule
+			if rule.Path == req.URL.Path && (rule.Method == "" || rule.Method == req.Method) {
+				return selectedBackend{Backend: rule.Backend, Rule: &rule}
+			}
 		}
 	}
 
@@ -262,7 +264,7 @@ func (a *Forklift) shouldApplyPercentage(sessionID string, percentage float64) b
 	h := fnv.New32a()
 	h.Write([]byte(sessionID))
 	hashValue := h.Sum32()
-	return float64(hashValue%100) < percentage
+	return float64(hashValue%10000) < percentage*100
 }
 
 func (a *Forklift) getMatchingRules(req *http.Request) []RoutingRule {
