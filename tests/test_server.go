@@ -42,7 +42,6 @@ func (ms *mockServer) URL() string {
 	return ms.server.URL
 }
 
-
 // TestPathPrefixRewrite runs test cases for path prefix rewrites.
 func TestPathPrefixRewrite(t *testing.T) {
 	server := newMockServer("Received path: /")
