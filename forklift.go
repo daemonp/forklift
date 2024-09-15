@@ -222,6 +222,9 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) SelectedBa
 	matchingRules := a.getMatchingRules(req)
 
 	if len(matchingRules) == 0 {
+		if a.config.Debug {
+			a.logger.Debugf("No matching rules found, using default backend: %s", a.config.DefaultBackend)
+		}
 		return SelectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
 	}
 
@@ -229,6 +232,14 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) SelectedBa
 	sort.Slice(matchingRules, func(i, j int) bool {
 		return matchingRules[i].Priority > matchingRules[j].Priority
 	})
+
+	if a.config.Debug {
+		a.logger.Debugf("Matching rules (sorted by priority):")
+		for _, rule := range matchingRules {
+			a.logger.Debugf("  - Path: %s, Method: %s, Backend: %s, Percentage: %f, Priority: %d",
+				rule.Path, rule.Method, rule.Backend, rule.Percentage, rule.Priority)
+		}
+	}
 
 	// Group rules by path
 	rulesByPath := make(map[string][]RoutingRule)
@@ -277,7 +288,7 @@ func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backen
 		totalPercentage += percentage
 	}
 
-	scaledHashValue := hashValue * totalPercentage
+	scaledHashValue := hashValue * 100 // Scale to 0-100 range
 
 	var cumulativePercentage float64
 	for _, backend := range backends {
