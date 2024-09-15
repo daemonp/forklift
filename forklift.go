@@ -81,14 +81,14 @@ type backendEntry struct {
 
 // CreateConfig creates a new Config.
 func CreateConfig() *config.Config {
-	return config.NewConfig()
+	return &config.Config{}
 }
 
 // New creates a new middleware.
 func New(ctx context.Context, next http.Handler, cfg *config.Config, name string) (http.Handler, error) {
 	logger := logger.NewLogger("forklift")
 	if cfg.Debug {
-		logger.Debug().Msgf("Creating new Forklift middleware with config: %+v", cfg)
+		logger.Debugf("Creating new Forklift middleware with config: %+v", cfg)
 	}
 	forklift, err := NewForklift(ctx, next, cfg, name)
 	if err != nil {
@@ -116,7 +116,7 @@ func NewForklift(ctx context.Context, next http.Handler, cfg *config.Config, nam
 		return cfg.Rules[i].Priority > cfg.Rules[j].Priority
 	})
 
-	logger := logger.NewLogger("forklift").With().Str("middleware", name).Logger()
+	logger := logger.NewLogger("forklift")
 
 	ruleEngine := &RuleEngine{
 		config: cfg,
@@ -134,7 +134,7 @@ func NewForklift(ctx context.Context, next http.Handler, cfg *config.Config, nam
 		logger:     logger,
 	}
 
-	forklift.logger.Info().Msgf("Starting Forklift middleware: %s", name)
+	forklift.logger.Printf("Starting Forklift middleware: %s", name)
 
 	return forklift, nil
 }
@@ -152,9 +152,9 @@ func generateSessionID() (string, error) {
 
 // ServeHTTP implements the http.Handler interface.
 func (a *Forklift) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
-	if a.debug {
-		a.logger.Infof("Received request: %s %s", req.Method, req.URL.Path)
-		a.logger.Infof("Headers: %v", req.Header)
+	if a.config.Debug {
+		a.logger.Printf("Received request: %s %s", req.Method, req.URL.Path)
+		a.logger.Printf("Headers: %v", req.Header)
 	}
 
 	sessionID := a.handleSessionID(rw, req)
@@ -195,8 +195,8 @@ func (a *Forklift) handleSessionID(rw http.ResponseWriter, req *http.Request) st
 		return ""
 	}
 
-	if a.debug {
-		a.logger.Infof("Session ID: %s", sessionID)
+	if a.config.Debug {
+		a.logger.Printf("Session ID: %s", sessionID)
 	}
 
 	return sessionID
@@ -348,9 +348,9 @@ func (a *Forklift) createProxyRequest(req *http.Request, backend string, selecte
 	// Update the Host header to match the backend
 	proxyReq.Host = proxyReq.URL.Host
 
-	if a.debug {
-		a.logger.Infof("Final request URL: %s", proxyReq.URL.String())
-		a.logger.Infof("Final request headers: %v", proxyReq.Header)
+	if a.config.Debug {
+		a.logger.Printf("Final request URL: %s", proxyReq.URL.String())
+		a.logger.Printf("Final request headers: %v", proxyReq.Header)
 	}
 
 	return proxyReq, nil
@@ -394,9 +394,9 @@ func (a *Forklift) sendProxyRequest(rw http.ResponseWriter, proxyReq *http.Reque
 		return
 	}
 
-	if a.debug {
-		a.logger.Infof("Response status code: %d", resp.StatusCode)
-		a.logger.Infof("Response headers: %v", resp.Header)
+	if a.config.Debug {
+		a.logger.Printf("Response status code: %d", resp.StatusCode)
+		a.logger.Printf("Response headers: %v", resp.Header)
 	}
 }
 
@@ -581,19 +581,14 @@ func (l DefaultLogger) Infof(format string, v ...interface{}) {
 }
 
 // SetLogger sets the logger for the middleware.
-func (c *Config) SetLogger(l Logger) {
+func (c *config.Config) SetLogger(l Logger) {
 	c.Logger = l
 }
 
 // GetLogger returns the current logger instance.
-func (c *Config) GetLogger() *DefaultLogger {
-	if dl, ok := c.Logger.(*DefaultLogger); ok {
-		return dl
+func (c *config.Config) GetLogger() Logger {
+	if c.Logger == nil {
+		return &DefaultLogger{}
 	}
-	return NewDefaultLogger()
-}
-
-// NewDefaultLogger returns a new instance of DefaultLogger.
-func NewDefaultLogger() *DefaultLogger {
-	return &DefaultLogger{}
+	return c.Logger
 }
