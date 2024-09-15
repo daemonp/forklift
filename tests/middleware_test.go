@@ -304,41 +304,54 @@ func runDefaultBackendTest(t *testing.T, middleware http.Handler) {
 func runSessionAffinityTest(t *testing.T, middleware http.Handler) {
 	t.Helper()
 	t.Run("Session affinity test", func(t *testing.T) {
-		req := createTestRequest(t, "GET", "/", nil, nil)
-		rr := httptest.NewRecorder()
-		middleware.ServeHTTP(rr, req)
+		// Create a map to store session-backend pairs
+		sessionBackends := make(map[string]string)
 
-		cookies := rr.Result().Cookies()
-		if len(cookies) == 0 {
-			t.Fatal("Expected a session cookie to be set")
-		}
-
-		sessionID := ""
-		for _, cookie := range cookies {
-			if cookie.Name == sessionCookieName {
-				sessionID = cookie.Value
-				break
-			}
-		}
-
-		if sessionID == "" {
-			t.Fatal("Session ID not found in cookies")
-		}
-
-		// Make multiple requests with the same session ID
-		expectedBody := strings.TrimSpace(rr.Body.String())
-		for range 10 {
+		// Make multiple requests with different session IDs
+		for i := 0; i < 100; i++ {
 			req := createTestRequest(t, "GET", "/", nil, nil)
-			req.AddCookie(&http.Cookie{
-				Name:  sessionCookieName,
-				Value: sessionID,
-			})
 			rr := httptest.NewRecorder()
 			middleware.ServeHTTP(rr, req)
 
+			cookies := rr.Result().Cookies()
+			sessionID := ""
+			for _, cookie := range cookies {
+				if cookie.Name == sessionCookieName {
+					sessionID = cookie.Value
+					break
+				}
+			}
+
+			if sessionID == "" {
+				t.Fatal("Session ID not found in cookies")
+			}
+
 			body := strings.TrimSpace(rr.Body.String())
-			if body != expectedBody {
-				t.Errorf("Expected consistent backend '%v', got '%v'", expectedBody, body)
+			
+			// If this session ID has been seen before, check if it maps to the same backend
+			if expectedBody, exists := sessionBackends[sessionID]; exists {
+				if body != expectedBody {
+					t.Errorf("Session affinity broken. Session ID %s: Expected backend '%v', got '%v'", sessionID, expectedBody, body)
+				}
+			} else {
+				// If this is a new session ID, store the backend it mapped to
+				sessionBackends[sessionID] = body
+			}
+
+			// Make 5 more requests with the same session ID to verify consistency
+			for j := 0; j < 5; j++ {
+				req := createTestRequest(t, "GET", "/", nil, nil)
+				req.AddCookie(&http.Cookie{
+					Name:  sessionCookieName,
+					Value: sessionID,
+				})
+				rr := httptest.NewRecorder()
+				middleware.ServeHTTP(rr, req)
+
+				newBody := strings.TrimSpace(rr.Body.String())
+				if newBody != body {
+					t.Errorf("Session affinity broken. Session ID %s: Expected backend '%v', got '%v'", sessionID, body, newBody)
+				}
 			}
 		}
 	})
