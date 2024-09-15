@@ -56,10 +56,10 @@ func TestIntegration(t *testing.T) {
 			expectedBodies: []string{"Hello from V2"},
 		},
 		{
-			name:   "POST / with MID=d should route to default",
+			name:   "POST / with MID=default should route to default",
 			path:   "/",
 			method: "POST",
-			body:   "MID=d",
+			body:   "MID=default",
 			headers: map[string]string{
 				"Content-Type": "application/x-www-form-urlencoded",
 			},

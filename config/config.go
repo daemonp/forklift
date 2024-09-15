@@ -11,12 +11,12 @@ import (
 
 // Config holds the configuration for the Forklift middleware.
 type Config struct {
-	DefaultBackend     string        `yaml:"defaultBackend,omitempty"`
-	Rules              []RoutingRule `yaml:"rules,omitempty"`
-	Debug              bool          `yaml:"debug,omitempty"`
-	ConfigFile         string        `yaml:"configFile,omitempty"`
-	DefaultBackendEnv  string        `yaml:"defaultBackendEnv,omitempty"`
-	DebugEnv           string        `yaml:"debugEnv,omitempty"`
+	DefaultBackend    string        `yaml:"defaultBackend,omitempty"`
+	Rules             []RoutingRule `yaml:"rules,omitempty"`
+	Debug             bool          `yaml:"debug,omitempty"`
+	ConfigFile        string        `yaml:"configFile,omitempty"`
+	DefaultBackendEnv string        `yaml:"defaultBackendEnv,omitempty"`
+	DebugEnv          string        `yaml:"debugEnv,omitempty"`
 }
 
 // RoutingRule defines the structure for routing rules in the middleware.
@@ -29,6 +29,7 @@ type RoutingRule struct {
 	Percentage        float64         `yaml:"percentage,omitempty"`
 	Priority          int             `yaml:"priority,omitempty"`
 	PathPrefixRewrite string          `yaml:"pathPrefixRewrite,omitempty"`
+	AffinityToken     string          `yaml:"affinityToken,omitempty"`
 }
 
 // RuleCondition defines the structure for conditions in routing rules.

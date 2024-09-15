@@ -1,4 +1,4 @@
-// Package forklift provides a middleware for flexible routing in Traefik v3.
+// Forklift middleware plugin for A/B testing
 package forklift
 
 import (
@@ -85,6 +85,7 @@ type backendEntry struct {
 	Info       *backendInfo
 	LowerBound float64
 	UpperBound float64
+	RuleHash   uint32
 }
 
 // CreateConfig creates a new Config.
@@ -160,8 +161,7 @@ func NewForklift(ctx context.Context, next http.Handler, cfg *config.Config, nam
 
 // generateSessionID creates a new random session ID.
 func generateSessionID() (string, error) {
-	const sessionIDBytes = 32
-	b := make([]byte, sessionIDBytes)
+	b := make([]byte, 32)
 	_, err := rand.Read(b)
 	if err != nil {
 		return "", err
@@ -189,7 +189,7 @@ func (a *Forklift) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		rw.Header().Set("X-Selected-Backend", backend)
 		a.logger.Debugf("Routing request to backend: %s", backend)
 		if selectedRule != nil {
-			a.logger.Debugf("Selected rule: Path: %s, Method: %s, Backend: %s, Percentage: %f", 
+			a.logger.Debugf("Selected rule: Path: %s, Method: %s, Backend: %s, Percentage: %f",
 				selectedRule.Path, selectedRule.Method, selectedRule.Backend, selectedRule.Percentage)
 		}
 	}
@@ -263,9 +263,9 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) SelectedBa
 		backendPercentages[backend] = totalPercentage
 	}
 
-	// Select backend based on percentages
-	selectedBackend := a.selectBackendByPercentage(sessionID, backendPercentages)
-	if selectedBackend != "" {
+	// Select backend based on percentages and rule hash
+	selectedBackend := a.selectBackendByPercentageAndRuleHash(sessionID, backendPercentages, matchingRules)
+	if selectedBackend != "" && len(backendRules[selectedBackend]) > 0 {
 		return SelectedBackend{Backend: selectedBackend, Rule: &backendRules[selectedBackend][0]}
 	}
 
@@ -273,29 +273,74 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) SelectedBa
 	return SelectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
 }
 
-func (a *Forklift) selectBackendByPercentage(sessionID string, backendPercentages map[string]float64) string {
+func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backendPercentages map[string]float64, matchingRules []RoutingRule) string {
+	// Sort backends to ensure consistent ordering
+	var backends []string
+	for backend := range backendPercentages {
+		backends = append(backends, backend)
+	}
+	sort.Strings(backends)
+
+	// Create cumulative percentage ranges
+	ranges := make(map[string]float64)
 	totalPercentage := 0.0
-	for _, percentage := range backendPercentages {
+	for _, backend := range backends {
+		percentage := backendPercentages[backend]
 		totalPercentage += percentage
+		ranges[backend] = totalPercentage
 	}
 
-	if totalPercentage == 0 {
-		return ""
+	// Normalize percentages if total exceeds 100
+	if totalPercentage > 100 {
+		factor := 100 / totalPercentage
+		for backend := range ranges {
+			ranges[backend] *= factor
+		}
+		totalPercentage = 100
 	}
 
-	hash := fnv.New32a()
-	hash.Write([]byte(sessionID))
-	randomValue := float64(hash.Sum32() % 100000) / 100000.0 * totalPercentage
+	// Use a consistent hash function
+	h := fnv.New64a()
+	h.Write([]byte(sessionID))
+	for _, rule := range matchingRules {
+		if rule.AffinityToken != "" {
+			h.Write([]byte(rule.AffinityToken))
+		} else {
+			h.Write([]byte(rule.Path))
+			h.Write([]byte(rule.Method))
+			h.Write([]byte(rule.Backend))
+		}
+	}
+	hashValue := float64(h.Sum64()) / float64(^uint64(0))
 
-	currentSum := 0.0
-	for backend, percentage := range backendPercentages {
-		currentSum += percentage
-		if randomValue <= currentSum {
+	// Select backend based on where the hash falls in the cumulative ranges
+	cumulativePercentage := 0.0
+	for _, backend := range backends {
+		cumulativePercentage += backendPercentages[backend]
+		if hashValue <= cumulativePercentage/100.0 {
 			return backend
 		}
 	}
 
-	return ""
+	// Fallback to default backend (should rarely happen)
+	return a.config.DefaultBackend
+}
+
+// hashRoutingRule generates a hash for a RoutingRule
+func hashRoutingRule(rule RoutingRule) uint32 {
+	h := fnv.New32a()
+	h.Write([]byte(rule.Path))
+	h.Write([]byte(rule.PathPrefix))
+	h.Write([]byte(rule.Method))
+	h.Write([]byte(rule.Backend))
+	for _, condition := range rule.Conditions {
+		h.Write([]byte(condition.Type))
+		h.Write([]byte(condition.Parameter))
+		h.Write([]byte(condition.QueryParam))
+		h.Write([]byte(condition.Operator))
+		h.Write([]byte(condition.Value))
+	}
+	return h.Sum32()
 }
 
 func (a *Forklift) shouldApplyPercentage(sessionID string, percentage float64) bool {
@@ -306,7 +351,7 @@ func (a *Forklift) shouldApplyPercentage(sessionID string, percentage float64) b
 		return false
 	}
 	hashValue := h.Sum32()
-	normalizedHash := float64(hashValue % 10000) / 10000.0
+	normalizedHash := float64(hashValue%10000) / 10000.0
 	result := normalizedHash < percentage/100.0
 	if a.config.Debug {
 		a.logger.Debugf("Session ID: %s, Percentage: %.2f, Normalized Hash: %.4f, Result: %v", sessionID, percentage, normalizedHash, result)

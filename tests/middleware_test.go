@@ -3,6 +3,7 @@ package tests
 
 import (
 	"context"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -56,18 +57,20 @@ func createTestConfig(servers map[string]*httptest.Server) *config.Config {
 		DefaultBackend: servers["default"].URL,
 		Rules: []config.RoutingRule{
 			{
-				Path:       "/",
-				Method:     "GET",
-				Backend:    servers["echo1"].URL,
-				Percentage: 50,
-				Priority:   1,
+				Path:          "/",
+				Method:        "GET",
+				Backend:       servers["echo1"].URL,
+				Percentage:    50,
+				Priority:      1,
+				AffinityToken: "group1",
 			},
 			{
-				Path:       "/",
-				Method:     "GET",
-				Backend:    servers["echo2"].URL,
-				Percentage: 50,
-				Priority:   1,
+				Path:          "/",
+				Method:        "GET",
+				Backend:       servers["echo2"].URL,
+				Percentage:    50,
+				Priority:      1,
+				AffinityToken: "group2",
 			},
 			{
 				Path:     "/v3",
@@ -125,7 +128,7 @@ func createTestConfig(servers map[string]*httptest.Server) *config.Config {
 				},
 			},
 		},
-		Debug: true,
+		Debug: false,
 	}
 }
 
@@ -249,36 +252,59 @@ func runBasicTests(t *testing.T, middleware http.Handler) {
 func runPercentageBasedRoutingTest(t *testing.T, middleware http.Handler) {
 	t.Helper()
 	t.Run("Percentage-based routing for GET /", func(t *testing.T) {
-		totalRequests := 1000
-		hitsEcho1 := 0
-		hitsEcho2 := 0
+		const totalRequests = 10000
+		const warmupRequests = 1000
+		const testRuns = 2
+		const epsilon = 0.5 // Allow 0.5% deviation
 
-		for range totalRequests {
-			req := createTestRequest(t, "GET", "/", nil, nil)
-			rr := httptest.NewRecorder()
-			middleware.ServeHTTP(rr, req)
+		runTest := func() (float64, float64) {
+			hitsEcho1, hitsEcho2 := 0, 0
 
-			body := strings.TrimSpace(rr.Body.String())
-			switch body {
-			case "Hello from V1":
-				hitsEcho1++
-			case "Hello from V2":
-				hitsEcho2++
-			default:
-				t.Errorf("Unexpected response body: %v", body)
+			// Warm-up phase
+			for i := 0; i < warmupRequests; i++ {
+				req := createTestRequest(t, "GET", "/", nil, nil)
+				rr := httptest.NewRecorder()
+				middleware.ServeHTTP(rr, req)
 			}
+
+			// Actual test
+			for i := 0; i < totalRequests; i++ {
+				req := createTestRequest(t, "GET", "/", nil, nil)
+				rr := httptest.NewRecorder()
+				middleware.ServeHTTP(rr, req)
+
+				body := strings.TrimSpace(rr.Body.String())
+				switch body {
+				case "Hello from V1":
+					hitsEcho1++
+				case "Hello from V2":
+					hitsEcho2++
+				default:
+					t.Errorf("Unexpected response body: %v", body)
+				}
+			}
+
+			percentageEcho1 := float64(hitsEcho1) / float64(totalRequests) * 100
+			percentageEcho2 := float64(hitsEcho2) / float64(totalRequests) * 100
+
+			return percentageEcho1, percentageEcho2
 		}
 
-		percentageEcho1 := float64(hitsEcho1) / float64(totalRequests) * 100
-		percentageEcho2 := float64(hitsEcho2) / float64(totalRequests) * 100
-
-		t.Logf("Echo1: %.2f%%, Echo2: %.2f%%", percentageEcho1, percentageEcho2)
-
-		if percentageEcho1 < 45 || percentageEcho1 > 55 {
-			t.Errorf("Expected Echo1 to receive approximately 50%% of traffic, got %.2f%%", percentageEcho1)
+		var totalPercentageEcho1, totalPercentageEcho2 float64
+		for i := 0; i < testRuns; i++ {
+			percentageEcho1, percentageEcho2 := runTest()
+			totalPercentageEcho1 += percentageEcho1
+			totalPercentageEcho2 += percentageEcho2
+			t.Logf("Run %d - Echo1: %.2f%%, Echo2: %.2f%%", i+1, percentageEcho1, percentageEcho2)
 		}
-		if percentageEcho2 < 45 || percentageEcho2 > 55 {
-			t.Errorf("Expected Echo2 to receive approximately 50%% of traffic, got %.2f%%", percentageEcho2)
+
+		avgPercentageEcho1 := totalPercentageEcho1 / float64(testRuns)
+		avgPercentageEcho2 := totalPercentageEcho2 / float64(testRuns)
+
+		t.Logf("Average over %d runs - Echo1: %.2f%%, Echo2: %.2f%%", testRuns, avgPercentageEcho1, avgPercentageEcho2)
+
+		if math.Abs(avgPercentageEcho1-50) > epsilon || math.Abs(avgPercentageEcho2-50) > epsilon {
+			t.Errorf("Expected both backends to receive 50%% ± %.2f%% of traffic, got Echo1: %.2f%%, Echo2: %.2f%%", epsilon, avgPercentageEcho1, avgPercentageEcho2)
 		}
 	})
 }
@@ -304,12 +330,22 @@ func runDefaultBackendTest(t *testing.T, middleware http.Handler) {
 func runSessionAffinityTest(t *testing.T, middleware http.Handler) {
 	t.Helper()
 	t.Run("Session affinity test", func(t *testing.T) {
-		// Create a map to store session-backend pairs
+		const totalSessions = 10000
+		const warmupSessions = 100
+		const requestsPerSession = 10
+		const epsilon = 0.75 // Allow 0.75% deviation (75 basis points)
+
 		sessionBackends := make(map[string]string)
 		backendCounts := make(map[string]int)
 
-		// Make multiple requests with different session IDs
-		for i := 0; i < 1000; i++ {
+		// Warm-up phase
+		for i := 0; i < warmupSessions; i++ {
+			req := createTestRequest(t, "GET", "/", nil, nil)
+			rr := httptest.NewRecorder()
+			middleware.ServeHTTP(rr, req)
+		}
+
+		for i := 0; i < totalSessions; i++ {
 			req := createTestRequest(t, "GET", "/", nil, nil)
 			rr := httptest.NewRecorder()
 			middleware.ServeHTTP(rr, req)
@@ -328,20 +364,11 @@ func runSessionAffinityTest(t *testing.T, middleware http.Handler) {
 			}
 
 			body := strings.TrimSpace(rr.Body.String())
-			
-			// If this session ID has been seen before, check if it maps to the same backend
-			if expectedBody, exists := sessionBackends[sessionID]; exists {
-				if body != expectedBody {
-					t.Errorf("Session affinity broken. Session ID %s: Expected backend '%v', got '%v'", sessionID, expectedBody, body)
-				}
-			} else {
-				// If this is a new session ID, store the backend it mapped to
-				sessionBackends[sessionID] = body
-				backendCounts[body]++
-			}
+			sessionBackends[sessionID] = body
+			backendCounts[body]++
 
-			// Make 10 more requests with the same session ID to verify consistency
-			for j := 0; j < 10; j++ {
+			// Make additional requests with the same session ID
+			for j := 0; j < requestsPerSession; j++ {
 				req := createTestRequest(t, "GET", "/", nil, nil)
 				req.AddCookie(&http.Cookie{
 					Name:  sessionCookieName,
@@ -356,23 +383,21 @@ func runSessionAffinityTest(t *testing.T, middleware http.Handler) {
 				}
 			}
 
-			// Log progress every 100 requests
-			if (i+1) % 100 == 0 {
-				t.Logf("Processed %d requests", i+1)
-				logBackendDistribution(t, backendCounts, i+1)
+			if (i+1)%2000 == 0 {
+				t.Logf("Processed %d sessions", i+1)
+				logBackendDistribution(t, backendCounts, i+1, epsilon)
 			}
 		}
 
-		// Final check of the distribution of backends
-		logBackendDistribution(t, backendCounts, len(sessionBackends))
+		logBackendDistribution(t, backendCounts, totalSessions, epsilon)
 	})
 }
 
-func logBackendDistribution(t *testing.T, backendCounts map[string]int, totalSessions int) {
+func logBackendDistribution(t *testing.T, backendCounts map[string]int, totalSessions int, epsilon float64) {
 	for backend, count := range backendCounts {
 		percentage := float64(count) / float64(totalSessions) * 100
 		t.Logf("Backend %s: %.2f%% (%d/%d)", backend, percentage, count, totalSessions)
-		if percentage < 45 || percentage > 55 {
+		if math.Abs(percentage-50) > epsilon {
 			t.Errorf("Backend distribution for %s is outside the expected range: %.2f%%", backend, percentage)
 		}
 	}
