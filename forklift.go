@@ -20,7 +20,7 @@ import (
 	"github.com/daemonp/forklift/logger"
 )
 
-// Alias config types for convenience
+// Alias config types for convenience.
 type (
 	RoutingRule   = config.RoutingRule
 	RuleCondition = config.RuleCondition
@@ -341,7 +341,7 @@ func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backen
 	return a.config.DefaultBackend
 }
 
-// hashRoutingRule generates a hash for a RoutingRule
+// hashRoutingRule generates a hash for a RoutingRule.
 func hashRoutingRule(rule RoutingRule) uint32 {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(rule.Path))
@@ -567,42 +567,50 @@ func (a *Forklift) sendProxyRequest(rw http.ResponseWriter, proxyReq *http.Reque
 
 // ruleMatches checks if a request matches a given rule.
 func (re *RuleEngine) ruleMatches(req *http.Request, rule RoutingRule) bool {
-	// Check exact path match
-	if rule.Path != "" {
-		if rule.Path != req.URL.Path {
-			if re.config.Debug {
-				re.logger.Debugf("Path mismatch: %s != %s", rule.Path, req.URL.Path)
-			}
-			return false
-		}
-	}
-	// Check path prefix match
-	if rule.PathPrefix != "" {
-		if !strings.HasPrefix(req.URL.Path, rule.PathPrefix) {
-			if re.config.Debug {
-				re.logger.Debugf("Path prefix mismatch: %s for path: %s", rule.PathPrefix, req.URL.Path)
-			}
-			return false
-		}
-		if re.config.Debug {
-			re.logger.Debugf("Path prefix match: %s for path: %s", rule.PathPrefix, req.URL.Path)
-		}
-	}
-	// Check method match
-	if rule.Method != "" && rule.Method != req.Method {
-		if re.config.Debug {
-			re.logger.Debugf("Method mismatch: %s != %s", rule.Method, req.Method)
-		}
+	if !re.matchPath(req, rule) {
 		return false
 	}
-	if re.config.Debug {
-		re.logger.Debugf("Checking conditions for path: %s", req.URL.Path)
+	if !re.matchMethod(req, rule) {
+		return false
 	}
-	// If there are no conditions, return true if we've made it this far
+	return re.matchConditions(req, rule)
+}
+
+func (re *RuleEngine) matchPath(req *http.Request, rule RoutingRule) bool {
+	if rule.Path != "" && rule.Path != req.URL.Path {
+		re.logDebug("Path mismatch: %s != %s", rule.Path, req.URL.Path)
+		return false
+	}
+	if rule.PathPrefix != "" && !strings.HasPrefix(req.URL.Path, rule.PathPrefix) {
+		re.logDebug("Path prefix mismatch: %s for path: %s", rule.PathPrefix, req.URL.Path)
+		return false
+	}
+	if rule.PathPrefix != "" {
+		re.logDebug("Path prefix match: %s for path: %s", rule.PathPrefix, req.URL.Path)
+	}
+	return true
+}
+
+func (re *RuleEngine) matchMethod(req *http.Request, rule RoutingRule) bool {
+	if rule.Method != "" && rule.Method != req.Method {
+		re.logDebug("Method mismatch: %s != %s", rule.Method, req.Method)
+		return false
+	}
+	return true
+}
+
+func (re *RuleEngine) matchConditions(req *http.Request, rule RoutingRule) bool {
+	re.logDebug("Checking conditions for path: %s", req.URL.Path)
 	if len(rule.Conditions) == 0 {
 		return true
 	}
 	return re.checkConditions(req, rule.Conditions)
+}
+
+func (re *RuleEngine) logDebug(format string, args ...interface{}) {
+	if re.config.Debug {
+		re.logger.Debugf(format, args...)
+	}
 }
 
 // checkConditions verifies if all conditions in a rule are met.
