@@ -453,11 +453,11 @@ func (re *RuleEngine) matchPath(req *http.Request, rule RoutingRule) bool {
 		return false
 	}
 	if rule.PathPrefix != "" && !strings.HasPrefix(req.URL.Path, rule.PathPrefix) {
-		re.logDebug("Path prefix mismatch: %s for path: %s", rule.PathPrefix, req.URL.Path)
+		re.logDebugf("Path prefix mismatch: %s for path: %s", rule.PathPrefix, req.URL.Path)
 		return false
 	}
 	if rule.PathPrefix != "" {
-		re.logDebug("Path prefix match: %s for path: %s", rule.PathPrefix, req.URL.Path)
+		re.logDebugf("Path prefix match: %s for path: %s", rule.PathPrefix, req.URL.Path)
 	}
 	return true
 }
