@@ -1,93 +1,173 @@
 package integration
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 )
 
 const (
 	traefikURL = "http://localhost:80"
 )
 
-func TestIntegration(t *testing.T) {
-	tests := []struct {
-		name         string
-		path         string
-		method       string
-		body         string
-		expectedBody string
-	}{
-		{"Route to V1 or V2", "/", "GET", "", "Hello from V"},
-		{"Route to V1 or V2 (second request)", "/", "GET", "", "Hello from V"},
-		{"Route to V2 (POST with MID=a)", "/", "POST", "MID=a", "Hello from V"},
-		{"Route to V1 (POST without MID)", "/", "POST", "", "Hello from V1"},
-	}
-
-	client := &http.Client{}
-	var sessionID string
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			runTest(t, client, &sessionID, tt)
-		})
+func closeBody(t *testing.T, body io.Closer) {
+	t.Helper()
+	if err := body.Close(); err != nil {
+		t.Errorf("Error closing response body: %v", err)
 	}
 }
 
-func runTest(t *testing.T, client *http.Client, sessionID *string, tt struct {
-	name         string
-	path         string
-	method       string
-	body         string
-	expectedBody string
+func TestIntegration(t *testing.T) {
+	tests := []struct {
+		name           string
+		path           string
+		method         string
+		body           string
+		headers        map[string]string
+		expectedBodies []string
+	}{
+		{
+			name:           "GET / should route to echo1 or echo2",
+			path:           "/",
+			method:         "GET",
+			expectedBodies: []string{"Hello from V1", "Hello from V2"},
+		},
+		{
+			name:           "GET /v3 should route to echo3",
+			path:           "/v3",
+			method:         "GET",
+			expectedBodies: []string{"Hello from V3"},
+		},
+		{
+			name:   "POST / with MID=a should route to echo2",
+			path:   "/",
+			method: "POST",
+			body:   "MID=a",
+			headers: map[string]string{
+				"Content-Type": "application/x-www-form-urlencoded",
+			},
+			expectedBodies: []string{"Hello from V2"},
+		},
+		{
+			name:           "GET /query-test?mid=two should route to echo2",
+			path:           "/query-test?mid=two",
+			method:         "GET",
+			expectedBodies: []string{"Hello from V2"},
+		},
+		{
+			name:           "GET /unknown should route to default",
+			path:           "/unknown",
+			method:         "GET",
+			expectedBodies: []string{"Default Backend"},
+		},
+	}
+
+	client := &http.Client{}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			runTest(t, client, tt)
+		})
+	}
+
+	// Additional test for percentage-based routing
+	t.Run("Percentage-based routing for GET /", func(t *testing.T) {
+		totalRequests := 1000
+		hitsEcho1 := 0
+		hitsEcho2 := 0
+
+		for range totalRequests {
+			req, err := http.NewRequest(http.MethodGet, traefikURL+"/", nil)
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatalf("Failed to send request: %v", err)
+			}
+			bodyBytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				closeBody(t, resp.Body)
+				t.Fatalf("Failed to read response body: %v", err)
+			}
+			bodyStr := string(bodyBytes)
+			closeBody(t, resp.Body)
+			switch {
+			case strings.Contains(bodyStr, "Hello from V1"):
+				hitsEcho1++
+			case strings.Contains(bodyStr, "Hello from V2"):
+				hitsEcho2++
+			default:
+				t.Errorf("Unexpected response body: %v", bodyStr)
+			}
+		}
+
+		percentageEcho1 := float64(hitsEcho1) / float64(totalRequests) * 100
+		percentageEcho2 := float64(hitsEcho2) / float64(totalRequests) * 100
+
+		t.Logf("Echo1: %.2f%%, Echo2: %.2f%%", percentageEcho1, percentageEcho2)
+
+		if percentageEcho1 < 45 || percentageEcho1 > 55 {
+			t.Errorf("Expected Echo1 to receive approximately 50%% of traffic, got %.2f%%", percentageEcho1)
+		}
+		if percentageEcho2 < 45 || percentageEcho2 > 55 {
+			t.Errorf("Expected Echo2 to receive approximately 50%% of traffic, got %.2f%%", percentageEcho2)
+		}
+	})
+}
+
+func runTest(t *testing.T, client *http.Client, tt struct {
+	name           string
+	path           string
+	method         string
+	body           string
+	headers        map[string]string
+	expectedBodies []string
 },
 ) {
 	t.Helper()
-	req, err := createRequest(tt.method, traefikURL+tt.path, tt.body, *sessionID)
+	req, err := createRequest(tt.method, traefikURL+tt.path, tt.body)
 	if err != nil {
 		t.Fatalf("Failed to create request: %v", err)
+	}
+
+	// Add headers if any
+	for k, v := range tt.headers {
+		req.Header.Set(k, v)
 	}
 
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("Failed to send request: %v", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	defer closeBody(t, resp.Body)
 
 	checkResponse(t, resp, tt)
-	logTestDetails(t, tt, resp)
-	updateSessionID(t, resp, sessionID)
 }
 
-func createRequest(method, url, body, sessionID string) (*http.Request, error) {
+func createRequest(method, urlStr, body string) (*http.Request, error) {
 	var req *http.Request
 	var err error
-	if method == "POST" {
-		req, err = http.NewRequest(method, url, strings.NewReader(body))
-		if err == nil {
-			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		}
+	if method == "POST" && body != "" {
+		req, err = http.NewRequest(method, urlStr, strings.NewReader(body))
 	} else {
-		req, err = http.NewRequest(method, url, nil)
+		req, err = http.NewRequest(method, urlStr, nil)
 	}
 	if err != nil {
 		return nil, err
-	}
-	if sessionID != "" {
-		req.AddCookie(&http.Cookie{Name: "forklift_id", Value: sessionID})
 	}
 	return req, nil
 }
 
 func checkResponse(t *testing.T, resp *http.Response, tt struct {
-	name         string
-	path         string
-	method       string
-	body         string
-	expectedBody string
+	name           string
+	path           string
+	method         string
+	body           string
+	headers        map[string]string
+	expectedBodies []string
 },
 ) {
 	t.Helper()
@@ -95,89 +175,21 @@ func checkResponse(t *testing.T, resp *http.Response, tt struct {
 		t.Errorf("Expected status OK, got %v", resp.Status)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("Failed to read response body: %v", err)
 	}
+	bodyStr := string(bodyBytes)
 
-	if !strings.Contains(string(body), tt.expectedBody) {
-		t.Errorf("Expected body to contain %q, got %q", tt.expectedBody, string(body))
-	}
-
-	if tt.method == "POST" && tt.body == "MID=a" {
-		if !strings.Contains(string(body), "Hello from V") {
-			t.Errorf("Expected response from a backend for POST with MID=a, got: %s", string(body))
+	found := false
+	for _, expected := range tt.expectedBodies {
+		if strings.Contains(bodyStr, expected) {
+			found = true
+			break
 		}
 	}
-}
 
-func logTestDetails(t *testing.T, tt struct {
-	name         string
-	path         string
-	method       string
-	body         string
-	expectedBody string
-}, resp *http.Response,
-) {
-	t.Helper()
-	t.Logf("Test: %s", tt.name)
-	t.Logf("Request method: %s", tt.method)
-	t.Logf("Request body: %s", tt.body)
-	body, _ := io.ReadAll(resp.Body)
-	t.Logf("Response body: %s", string(body))
-	t.Logf("Selected backend: %s", resp.Header.Get("X-Selected-Backend"))
-}
-
-func updateSessionID(t *testing.T, resp *http.Response, sessionID *string) {
-	t.Helper()
-	if *sessionID == "" {
-		for _, cookie := range resp.Cookies() {
-			if cookie.Name == "forklift_id" {
-				*sessionID = cookie.Value
-				t.Logf("Session ID: %s", *sessionID)
-				break
-			}
-		}
-	}
-}
-
-func TestGradualRolloutIntegration(t *testing.T) {
-	v1Count := 0
-	v2Count := 0
-	totalRequests := 1000
-
-	for range totalRequests {
-		resp, err := http.Get(traefikURL + "/")
-		if err != nil {
-			t.Fatalf("Failed to send request: %v", err)
-		}
-		defer func() { _ = resp.Body.Close() }()
-
-		if resp.StatusCode != http.StatusOK {
-			t.Errorf("Expected status OK, got %v", resp.Status)
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatalf("Failed to read response body: %v", err)
-		}
-
-		switch {
-		case strings.Contains(string(body), "Hello from V2"):
-			v2Count++
-		case strings.Contains(string(body), "Hello from V1"):
-			v1Count++
-		default:
-			t.Errorf("Unexpected response body: %s", string(body))
-		}
-
-		// Add a small delay to avoid overwhelming the server
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	v2Percentage := float64(v2Count) / float64(totalRequests) * 100
-	fmt.Printf("V2 percentage: %.2f%%\n", v2Percentage)
-	if v2Percentage < 45 || v2Percentage > 55 {
-		t.Errorf("Gradual rollout distribution outside expected range: V2 percentage = %.2f%%", v2Percentage)
+	if !found {
+		t.Errorf("Expected body to contain one of %v, got %q", tt.expectedBodies, bodyStr)
 	}
 }

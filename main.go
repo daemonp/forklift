@@ -1,4 +1,4 @@
-// Package forklift provides a middleware for AB testing in Traefik.
+// Package forklift provides a middleware for flexible routing in Traefik.
 package forklift
 
 import (
@@ -20,19 +20,22 @@ import (
 )
 
 var (
-	errEmptyConfig       = errors.New("empty configuration")
-	errMissingV1Backend  = errors.New("missing V1Backend")
-	errMissingV2Backend  = errors.New("missing V2Backend")
-	errInvalidPercentage = errors.New("invalid percentage: must be between 0 and 100")
+	errEmptyConfig           = errors.New("empty configuration")
+	errMissingDefaultBackend = errors.New("missing DefaultBackend")
+	errInvalidPercentage     = errors.New("invalid percentage: must be between 0 and 100")
 )
 
-// Config holds the configuration for the AB testing middleware.
+// Config holds the configuration for the middleware.
 type Config struct {
-	V1Backend string        `json:"v1Backend,omitempty"`
-	V2Backend string        `json:"v2Backend,omitempty"`
-	Rules     []RoutingRule `json:"rules,omitempty"`
-	Debug     bool
-	Logger    Logger
+	DefaultBackend string        `json:"defaultBackend,omitempty"`
+	Rules          []RoutingRule `json:"rules,omitempty"`
+	Debug          bool
+	Logger         Logger
+}
+
+// matchPathPrefix checks if the request path matches the rule's path prefix.
+func matchPathPrefix(reqPath, rulePrefix string) bool {
+	return strings.HasPrefix(reqPath, rulePrefix)
 }
 
 const (
@@ -42,7 +45,9 @@ const (
 	cacheCleanupInterval = 10 * time.Minute
 	maxSessionIDLength   = 128
 	defaultTimeout       = 10 * time.Second
-	v2Backend            = 2
+	fullPercentage       = 100.0
+	hashModulo           = 10000
+	hashDivisor          = 100.0
 )
 
 // RoutingRule defines the structure for routing rules in the middleware.
@@ -66,7 +71,7 @@ type RuleCondition struct {
 	QueryParam string `json:"queryParam,omitempty"`
 }
 
-// Forklift is the main struct for the AB testing middleware.
+// Forklift is the main struct for the middleware.
 type Forklift struct {
 	next       http.Handler
 	config     *Config
@@ -82,39 +87,49 @@ type RuleEngine struct {
 	cache  *sync.Map
 }
 
+// backendInfo stores information about a backend.
+type backendInfo struct {
+	Percentage float64
+	Rules      []*RoutingRule
+}
+
+// backendEntry represents a backend with its selection bounds.
+type backendEntry struct {
+	Backend    string
+	Info       *backendInfo
+	LowerBound float64
+	UpperBound float64
+}
+
 // CreateConfig creates a new Config.
 func CreateConfig() *Config {
 	return &Config{
-		Debug:     os.Getenv("DEBUG") == "true",
-		Logger:    NewDefaultLogger(),
-		V1Backend: "http://localhost:8080", // Default V1 backend
-		V2Backend: "http://localhost:8081", // Default V2 backend
-		Rules:     []RoutingRule{},         // Initialize empty rules slice
+		Debug:          os.Getenv("DEBUG") == "true",
+		Logger:         NewDefaultLogger(),
+		DefaultBackend: "http://localhost:8080", // Set a default backend URL
+		Rules:          []RoutingRule{},         // Initialize empty rules slice
 	}
 }
 
-// New creates a new AB testing middleware.
+// New creates a new middleware.
 func New(_ context.Context, next http.Handler, config *Config, name string) (http.Handler, error) {
 	if config.Debug {
-		config.Logger.Printf("Debug: Creating new AB testing middleware with config: %+v", config)
+		config.Logger.Printf("Debug: Creating new middleware with config: %+v", config)
 	}
 	forklift, err := NewForklift(next, config, name)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create AB test middleware: %w", err)
+		return nil, fmt.Errorf("failed to create middleware: %w", err)
 	}
 	return forklift, nil
 }
 
-// NewForklift creates a new AB testing middleware.
+// NewForklift creates a new middleware.
 func NewForklift(next http.Handler, config *Config, name string) (*Forklift, error) {
 	if config == nil {
 		return nil, errEmptyConfig
 	}
-	if config.V1Backend == "" {
-		return nil, errMissingV1Backend
-	}
-	if config.V2Backend == "" {
-		return nil, errMissingV2Backend
+	if config.DefaultBackend == "" {
+		return nil, errMissingDefaultBackend
 	}
 	for _, rule := range config.Rules {
 		if rule.Percentage < 0 || rule.Percentage > 100 {
@@ -176,14 +191,16 @@ func (a *Forklift) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	backend := a.selectBackend(req, sessionID)
+	selected := a.selectBackend(req, sessionID)
+	backend := selected.Backend
+	selectedRule := selected.Rule
 
 	if a.debug {
 		rw.Header().Set("X-Selected-Backend", backend)
 		a.logger.Infof("Routing request to backend: %s", backend)
 	}
 
-	proxyReq, err := a.createProxyRequest(req, backend)
+	proxyReq, err := a.createProxyRequest(req, backend, selectedRule)
 	if err != nil {
 		a.logger.Printf("Error creating proxy request: %v", err)
 		http.Error(rw, "Error creating proxy request", http.StatusInternalServerError)
@@ -214,23 +231,134 @@ func (a *Forklift) handleSessionID(rw http.ResponseWriter, req *http.Request) st
 	return sessionID
 }
 
-func (a *Forklift) selectBackend(req *http.Request, sessionID string) string {
-	backend := a.config.V1Backend
-	for _, rule := range a.config.Rules {
-		if a.ruleEngine.ruleMatches(req, rule) {
-			if rule.Backend != "" {
-				backend = rule.Backend
-			} else if a.ruleEngine.shouldRouteToV2(sessionID, rule.Percentage) {
-				backend = a.config.V2Backend
-			}
-			break
-		}
-	}
-	return backend
+type selectedBackend struct {
+	Backend string
+	Rule    *RoutingRule
 }
 
-func (a *Forklift) createProxyRequest(req *http.Request, backend string) (*http.Request, error) {
-	backendURL := a.constructBackendURL(req, backend)
+func (a *Forklift) selectBackend(req *http.Request, sessionID string) selectedBackend {
+	matchingRules := a.getMatchingRules(req)
+
+	if len(matchingRules) == 0 {
+		return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
+	}
+
+	backendPercentages := a.mapBackendsToPercentages(matchingRules)
+	totalPercentage := a.sumTotalPercentages(backendPercentages)
+
+	a.adjustPercentages(backendPercentages, &totalPercentage)
+
+	backends := a.buildCumulativePercentages(backendPercentages)
+
+	return a.selectBackendFromPercentages(backends, sessionID)
+}
+
+func (a *Forklift) getMatchingRules(req *http.Request) []RoutingRule {
+	matchingRules := []RoutingRule{}
+	for _, rule := range a.config.Rules {
+		if a.ruleEngine.ruleMatches(req, rule) {
+			matchingRules = append(matchingRules, rule)
+		}
+	}
+	return matchingRules
+}
+
+func (a *Forklift) mapBackendsToPercentages(matchingRules []RoutingRule) map[string]*backendInfo {
+	backendPercentages := make(map[string]*backendInfo)
+	for _, rule := range matchingRules {
+		backend := rule.Backend
+		percentage := rule.Percentage
+		if percentage <= 0 || percentage > fullPercentage {
+			percentage = fullPercentage
+		}
+		if _, exists := backendPercentages[backend]; !exists {
+			backendPercentages[backend] = &backendInfo{
+				Percentage: 0,
+				Rules:      []*RoutingRule{},
+			}
+		}
+		backendPercentages[backend].Percentage += percentage
+		backendPercentages[backend].Rules = append(backendPercentages[backend].Rules, &rule)
+	}
+	return backendPercentages
+}
+
+func (a *Forklift) sumTotalPercentages(backendPercentages map[string]*backendInfo) float64 {
+	totalPercentage := 0.0
+	for _, info := range backendPercentages {
+		totalPercentage += info.Percentage
+	}
+	return totalPercentage
+}
+
+func (a *Forklift) adjustPercentages(backendPercentages map[string]*backendInfo, totalPercentage *float64) {
+	if *totalPercentage < fullPercentage {
+		remaining := fullPercentage - *totalPercentage
+		if _, exists := backendPercentages[a.config.DefaultBackend]; !exists {
+			backendPercentages[a.config.DefaultBackend] = &backendInfo{
+				Percentage: 0,
+				Rules:      []*RoutingRule{},
+			}
+		}
+		backendPercentages[a.config.DefaultBackend].Percentage += remaining
+		*totalPercentage += remaining
+	}
+
+	if *totalPercentage > fullPercentage {
+		for _, info := range backendPercentages {
+			info.Percentage = info.Percentage * fullPercentage / *totalPercentage
+		}
+	}
+}
+
+func (a *Forklift) buildCumulativePercentages(backendPercentages map[string]*backendInfo) []backendEntry {
+	backends := make([]backendEntry, 0, len(backendPercentages))
+	for backend, info := range backendPercentages {
+		backends = append(backends, backendEntry{
+			Backend: backend,
+			Info:    info,
+		})
+	}
+	sort.Slice(backends, func(i, j int) bool {
+		return backends[i].Backend < backends[j].Backend
+	})
+
+	currentLower := 0.0
+	for i := range backends {
+		be := &backends[i]
+		be.LowerBound = currentLower
+		be.UpperBound = currentLower + be.Info.Percentage
+		currentLower = be.UpperBound
+	}
+
+	return backends
+}
+
+func (a *Forklift) selectBackendFromPercentages(backends []backendEntry, sessionID string) selectedBackend {
+	h := fnv.New32a()
+	_, err := h.Write([]byte(sessionID))
+	if err != nil {
+		a.logger.Printf("Error hashing session ID: %v", err)
+		return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
+	}
+	hashValue := h.Sum32()
+	hashPercentage := float64(hashValue%hashModulo) / hashDivisor
+
+	for _, be := range backends {
+		if hashPercentage >= be.LowerBound && hashPercentage < be.UpperBound {
+			selectedRule := be.Info.Rules[0]
+			return selectedBackend{
+				Backend: be.Backend,
+				Rule:    selectedRule,
+			}
+		}
+	}
+
+	return selectedBackend{Backend: a.config.DefaultBackend, Rule: nil}
+}
+
+func (a *Forklift) createProxyRequest(req *http.Request, backend string, selectedRule *RoutingRule) (*http.Request, error) {
+	backendURL := a.constructBackendURL(req, backend, selectedRule)
 	var proxyBody io.Reader
 	if req.Body != nil {
 		proxyBody = req.Body
@@ -257,22 +385,13 @@ func (a *Forklift) createProxyRequest(req *http.Request, backend string) (*http.
 	return proxyReq, nil
 }
 
-func (a *Forklift) constructBackendURL(req *http.Request, backend string) string {
-	var pathPrefix string
-	for _, rule := range a.config.Rules {
-		if a.ruleEngine.ruleMatches(req, rule) {
-			pathPrefix = rule.PathPrefix
-			break
-		}
-	}
-
+func (a *Forklift) constructBackendURL(req *http.Request, backend string, selectedRule *RoutingRule) string {
 	backendPath := req.URL.Path
-	if pathPrefix != "" && strings.HasPrefix(backendPath, pathPrefix) {
-		trimmedPath := strings.TrimPrefix(backendPath, pathPrefix)
-		if trimmedPath == "" {
-			trimmedPath = "/"
+	if selectedRule != nil && selectedRule.PathPrefixRewrite != "" {
+		// Perform path prefix rewrite
+		if selectedRule.PathPrefix != "" && strings.HasPrefix(backendPath, selectedRule.PathPrefix) {
+			backendPath = strings.Replace(backendPath, selectedRule.PathPrefix, selectedRule.PathPrefixRewrite, 1)
 		}
-		return backend + pathPrefix + trimmedPath
 	}
 	return backend + backendPath
 }
@@ -315,7 +434,7 @@ func (re *RuleEngine) ruleMatches(req *http.Request, rule RoutingRule) bool {
 	if rule.Path != "" && rule.Path != req.URL.Path {
 		return false
 	}
-	if rule.PathPrefix != "" && !strings.HasPrefix(req.URL.Path, rule.PathPrefix) {
+	if rule.PathPrefix != "" && !matchPathPrefix(req.URL.Path, rule.PathPrefix) {
 		return false
 	}
 	if rule.Method != "" && rule.Method != req.Method {
@@ -357,6 +476,10 @@ func (re *RuleEngine) checkCondition(req *http.Request, condition RuleCondition)
 }
 
 func (re *RuleEngine) checkForm(req *http.Request, condition RuleCondition) bool {
+	if err := req.ParseForm(); err != nil {
+		re.config.Logger.Printf("Error parsing form data: %v", err)
+		return false
+	}
 	formValue := req.PostFormValue(condition.Parameter)
 	if re.config.Debug {
 		re.config.Logger.Infof("Form parameter %s: %s", condition.Parameter, formValue)
@@ -420,66 +543,14 @@ func parseFloats(s1, s2 string) (float64, float64) {
 	return f1, f2
 }
 
-// shouldRouteToV2 determines if the request should be routed to V2 based on the percentage and session ID.
-func (re *RuleEngine) shouldRouteToV2(sessionID string, percentage float64) bool {
-	// Always route to V1 if percentage is 0
-	if percentage == 0 {
-		return false
-	}
-
-	// Always route to V2 if percentage is 100
-	const fullPercentage = 100.0
-	if percentage == fullPercentage {
-		return true
-	}
-
-	// Use the session ID as the key for consistent routing
-	key := sessionID
-
-	// Check if we have a cached decision for this key
-	if cachedDecision, found := re.cache.Load(key); found {
-		if decision, ok := cachedDecision.(bool); ok {
-			return decision
-		}
-	}
-
-	// Generate a consistent hash for the key
-	h := fnv.New32a()
-	_, err := h.Write([]byte(key))
-	if err != nil {
-		re.config.Logger.Printf("Error writing to hash: %v", err)
-		return false
-	}
-	hashValue := h.Sum32()
-
-	// Use the hash to make a consistent decision
-	decision := float64(hashValue)/float64(^uint32(0)) < (percentage / fullPercentage)
-
-	// Cache the decision
-	re.cache.Store(key, decision)
-
-	if re.config.Debug {
-		re.config.Logger.Infof("Routing decision for session %s: V%d", sessionID, map[bool]int{false: 1, true: v2Backend}[decision])
-	}
-
-	return decision
-}
-
 // cleanupCache periodically removes old entries from the cache.
 func (re *RuleEngine) cleanupCache() {
 	ticker := time.NewTicker(cacheCleanupInterval)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		now := time.Now()
-		re.cache.Range(func(key, value interface{}) bool {
-			if cacheEntry, ok := value.(time.Time); ok {
-				if now.Sub(cacheEntry) > cacheDuration {
-					re.cache.Delete(key)
-				}
-			}
-			return true
-		})
+		// Clear the entire cache periodically
+		re.cache = &sync.Map{}
 	}
 }
 

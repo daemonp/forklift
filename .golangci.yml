@@ -34,6 +34,7 @@ linters:
     - execinquery # not relevant (SQL)
     - cyclop # duplicate of gocyclo
     - bodyclose # Too many false positives: https://github.com/timakin/bodyclose/issues/30
+    - exportloopref
     - dupl
     - depguard
     - testpackage

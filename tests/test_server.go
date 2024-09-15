@@ -1,4 +1,4 @@
-// Package tests provides testing utilities and test cases for the Forklift middleware.
+// Package tests provides utility functions and structures for testing the Forklift middleware.
 package tests
 
 import (
@@ -13,42 +13,41 @@ import (
 	"github.com/daemonp/forklift"
 )
 
-const (
-	defaultBufferSize = 1024
-	fullPercentage    = 100.0
-)
+const defaultBufferSize = 1024
 
-// NewTestServer creates a new test server with the given handler.
-func NewTestServer(handler http.HandlerFunc) *httptest.Server {
-	return httptest.NewServer(handler)
+// mockServer is a struct that holds a mock server and its associated response.
+type mockServer struct {
+	server   *httptest.Server
+	response string
 }
 
-// NewV1TestServer creates a new test server simulating a V1 backend.
-func NewV1TestServer() *httptest.Server {
-	return NewTestServer(func(w http.ResponseWriter, _ *http.Request) {
+// newMockServer creates a new mock server with the given response.
+func newMockServer(response string) *mockServer {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("V1 Backend"))
-	})
+		_, _ = w.Write([]byte(response))
+	}))
+	return &mockServer{
+		server:   server,
+		response: response,
+	}
 }
 
-// NewV2TestServer creates a new test server simulating a V2 backend.
-func NewV2TestServer() *httptest.Server {
-	return NewTestServer(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("V2 Backend"))
-	})
+// close closes the mock server.
+func (ms *mockServer) close() {
+	ms.server.Close()
 }
 
-// NewTestServerWithPathRewrite creates a new test server that handles path prefix rewrites.
-func NewTestServerWithPathRewrite() *httptest.Server {
-	return NewTestServer(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("Received path: " + r.URL.Path))
-	})
+// URL returns the URL of the mock server.
+func (ms *mockServer) URL() string {
+	return ms.server.URL
 }
 
 // TestPathPrefixRewrite runs test cases for path prefix rewrites.
 func TestPathPrefixRewrite(t *testing.T) {
+	server := newMockServer("Received path: /")
+	defer server.close()
+
 	testCases := []struct {
 		name         string
 		pathPrefix   string
@@ -81,12 +80,9 @@ func TestPathPrefixRewrite(t *testing.T) {
 		},
 	}
 
-	server := NewTestServerWithPathRewrite()
-	defer server.Close()
-
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			url := server.URL + tc.requestPath
+			url := server.URL() + tc.requestPath
 			client := &http.Client{}
 			req, err := http.NewRequest(http.MethodGet, url, nil)
 			if err != nil {
@@ -123,27 +119,19 @@ func TestPathPrefixRewrite(t *testing.T) {
 // TestForkliftPathPrefixRewrite tests the path prefix rewrite functionality in the Forklift middleware.
 func TestForkliftPathPrefixRewrite(t *testing.T) {
 	// Create test servers for V1 and V2 backends
-	v1Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("V1 Backend: " + r.URL.Path))
-	}))
-	defer v1Server.Close()
+	v1Server := newMockServer("V1 Backend: /")
+	defer v1Server.close()
 
-	v2Server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte("V2 Backend: " + r.URL.Path))
-	}))
-	defer v2Server.Close()
+	v2Server := newMockServer("V2 Backend: /")
+	defer v2Server.close()
 
 	// Create Forklift configuration
 	config := &forklift.Config{
-		V1Backend: v1Server.URL,
-		V2Backend: v2Server.URL,
+		DefaultBackend: v1Server.URL(),
 		Rules: []forklift.RoutingRule{
 			{
 				PathPrefix: "/api",
-				Backend:    v2Server.URL,
-				Percentage: fullPercentage,
+				Backend:    v2Server.URL(),
 			},
 		},
 	}

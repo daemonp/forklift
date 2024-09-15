@@ -1,127 +1,55 @@
 # Traefik Forklift A/B Testing Middleware
 
-This Traefik middleware plugin enables advanced A/B testing and traffic routing capabilities for your Docker and Kubernetes environments. It allows you to route traffic to different backend services based on various conditions, including request path, method, query parameters, form data, headers, and more.
+## Introduction
+
+Traefik Forklift is a powerful middleware plugin for Traefik that enables advanced A/B testing, canary deployments, and traffic routing strategies. It allows you to route traffic to different backend services based on a wide range of conditions, including request paths, methods, headers, query parameters, form data, cookies, and more.
 
 ## Features
 
--   Dynamic routing based on multiple conditions
--   Support for gradual rollout with percentage-based routing
--   Session affinity for consistent user experience
--   Path prefix rewriting
--   Flexible configuration using Traefik's middleware plugin system
--   Compatible with Docker Compose and Kubernetes ingress
+-   **Dynamic Routing Rules:** Define flexible routing rules based on various request attributes.
+-   **Percentage-Based Traffic Splitting:** Gradually roll out new features or services by controlling the percentage of traffic directed to different backends.
+-   **Default Backend Support:** Specify a default backend to handle requests that don't match any rules.
+-   **Session Affinity:** Maintain consistent routing decisions for users based on session IDs.
+-   **Path Prefix Rewriting:** Modify request paths before they reach the backend services.
+-   **Priority-Based Rule Evaluation:** Control the order in which rules are evaluated using priorities.
 
 ## Prerequisites
 
--   Go 1.16 or later
--   Traefik v2.5 or later
--   Docker and Docker Compose (for local testing)
--   Kubernetes cluster (for Kubernetes deployment)
-
-## Building the Plugin
-
-1. Clone this repository:
-    ```
-    git clone https://github.com/daemonp/forklift.git
-    ```
+-   **Traefik v2.5 or later**
+-   **Kubernetes Cluster** (for Kubernetes deployment)
+-   **Go 1.16 or later** (if building from source)
 
 ## Configuration Options
 
-The middleware supports the following configuration options:
+### Global Configuration
 
--   `v1Backend`: The default backend URL
--   `v2Backend`: The new version backend URL
--   `rules`: An array of routing rules
-    -   `path`: The exact request path to match
-    -   `pathPrefix`: A prefix to match for the request path
-    -   `method`: The HTTP method to match
-    -   `conditions`: An array of conditions to match
-        -   `type`: Type of the condition ("query", "form", "header")
-        -   `parameter`: The parameter name to check
-        -   `queryParam`: The query parameter to check (for type "query")
-        -   `operator`: Comparison operator ("eq", "ne", "gt", "lt", "contains", "regex")
-        -   `value`: The value to compare against
-    -   `backend`: The backend URL to route to if the rule matches
-    -   `percentage`: (Optional) Percentage of matching traffic to route to the specified backend
-    -   `priority`: (Optional) Priority of the rule (higher numbers have higher priority)
-    -   `pathPrefixRewrite`: (Optional) The new path prefix to rewrite the request to
+-   **`defaultBackend`** (string, required): The default backend URL to use when no rule matches.
 
-## Use Cases and Examples
+### Routing Rules
 
-### Docker Compose
+Each rule in the `rules` array supports the following fields:
 
-Here's an example of how to configure the middleware in a Docker Compose environment:
+-   **`path`** (string, optional): Exact request path to match.
+-   **`pathPrefix`** (string, optional): Request path prefix to match.
+-   **`method`** (string, optional): HTTP method to match (e.g., GET, POST).
+-   **`conditions`** (array of conditions, optional): Additional conditions to match.
+    -   **`type`** (string): Type of condition (`header`, `query`, `form`, `cookie`).
+    -   **`parameter`** (string): The name of the header, form field, or cookie.
+    -   **`queryParam`** (string): The name of the query parameter (for type `query`).
+    -   **`operator`** (string): Comparison operator (`eq`, `contains`, `regex`, `gt`, `lt`, etc.).
+    -   **`value`** (string): The value to compare against.
+-   **`backend`** (string, required): Backend URL to route to if the rule matches.
+-   **`percentage`** (float, optional): Percentage of traffic to route to this backend (used when multiple rules match).
+-   **`priority`** (int, optional): Priority of the rule (higher numbers are evaluated first).
+-   **`pathPrefixRewrite`** (string, optional): New path prefix to rewrite the request to before forwarding.
 
-```yaml
-version: "3"
+## Kubernetes Examples
 
-services:
-    traefik:
-        image: traefik:v2.10
-        command:
-            - "--api.insecure=true"
-            - "--providers.docker=true"
-            - "--providers.docker.exposedbydefault=false"
-            - "--entrypoints.web.address=:80"
-            - "--experimental.localPlugins.abtest.moduleName=github.com/daemonp/forklift"
-        ports:
-            - "80:80"
-            - "8080:8080"
-        volumes:
-            - /var/run/docker.sock:/var/run/docker.sock:ro
-            - ./:/plugins-local/src/github.com/daemonp/forklift
+Below are Kubernetes examples demonstrating various configuration options. Each example corresponds to specific test cases and demonstrates how to configure the middleware for different routing scenarios.
 
-    echo1:
-        image: hashicorp/http-echo
-        command: ["-text", "Hello from V1"]
-        labels:
-            - "traefik.enable=true"
-            - "traefik.http.services.echo1.loadbalancer.server.port=5678"
+### 1. Basic GET Routing with Traffic Splitting
 
-    echo2:
-        image: hashicorp/http-echo
-        command: ["-text", "Hello from V2"]
-        labels:
-            - "traefik.enable=true"
-            - "traefik.http.services.echo2.loadbalancer.server.port=5678"
-
-    abtest:
-        image: traefik/whoami
-        labels:
-            - "traefik.enable=true"
-            - "traefik.http.routers.abtest.rule=PathPrefix(`/`)"
-            - "traefik.http.routers.abtest.entrypoints=web"
-            - "traefik.http.routers.abtest.middlewares=abtest-middleware"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.v1backend=http://echo1:5678"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.v2backend=http://echo2:5678"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].path=/"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].method=GET"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].percentage=50"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].path=/"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].method=POST"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].conditions[0].type=form"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].conditions[0].parameter=MID"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].conditions[0].operator=eq"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].conditions[0].value=a"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].percentage=100"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].path=/query-test"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].method=GET"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].conditions[0].type=query"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].conditions[0].queryParam=mid"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].conditions[0].operator=eq"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].conditions[0].value=two"
-            - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].backend=http://echo2:5678"
-```
-
-This configuration demonstrates several use cases:
-
-1. Basic A/B testing with a 50/50 split for GET requests to the root path.
-2. Routing all POST requests with a specific form parameter to V2.
-3. Routing GET requests with a specific query parameter to V2.
-
-### Kubernetes
-
-For Kubernetes, you can use the middleware with IngressRoute CRDs. Here's an example:
+**Scenario:** Split GET requests to `/` between two backends (`v1-service` and `v2-service`) equally.
 
 ```yaml
 apiVersion: traefik.containo.us/v1alpha1
@@ -131,30 +59,281 @@ metadata:
 spec:
     plugin:
         abtest:
-            v1Backend: "http://v1-service"
-            v2Backend: "http://v2-service"
+            defaultBackend: "http://default-service"
             rules:
                 - path: "/"
                   method: "GET"
+                  backend: "http://v1-service"
                   percentage: 50
+                  priority: 1
+                - path: "/"
+                  method: "GET"
+                  backend: "http://v2-service"
+                  percentage: 50
+                  priority: 1
+```
+
+**Explanation:**
+
+-   Defines two rules for GET `/` with equal percentages.
+-   Traffic is split 50/50 between `v1-service` and `v2-service`.
+-   Both rules have the same priority.
+
+### 2. Routing Based on Form Data in POST Requests
+
+**Scenario:** Route POST requests to `/` with form parameter `MID=a` to `v2-service`.
+
+```yaml
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+    name: form-routing-middleware
+spec:
+    plugin:
+        abtest:
+            defaultBackend: "http://default-service"
+            rules:
                 - path: "/"
                   method: "POST"
+                  backend: "http://v2-service"
+                  priority: 1
                   conditions:
                       - type: "form"
                         parameter: "MID"
                         operator: "eq"
                         value: "a"
-                  percentage: 100
+```
+
+**Explanation:**
+
+-   Routes POST requests with form field `MID=a` to `v2-service`.
+-   Uses a condition of type `form` to inspect form data.
+
+### 3. Routing Based on Query Parameters
+
+**Scenario:** Route GET requests to `/query-test` with query parameter `mid=two` to `v2-service`.
+
+```yaml
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+    name: query-routing-middleware
+spec:
+    plugin:
+        abtest:
+            defaultBackend: "http://default-service"
+            rules:
                 - path: "/query-test"
                   method: "GET"
+                  backend: "http://v2-service"
+                  priority: 1
                   conditions:
                       - type: "query"
                         queryParam: "mid"
                         operator: "eq"
                         value: "two"
-                  backend: "http://v2-service"
+```
 
----
+**Explanation:**
+
+-   Routes GET requests with `mid=two` in the query string to `v2-service`.
+-   Uses a condition of type `query` to inspect query parameters.
+
+### 4. Percentage-Based Routing with Form Data
+
+**Scenario:** Route 10% of POST requests to `/` with form parameter `MID=d` to `v3-service`.
+
+```yaml
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+    name: percentage-form-routing-middleware
+spec:
+    plugin:
+        abtest:
+            defaultBackend: "http://default-service"
+            rules:
+                - path: "/"
+                  method: "POST"
+                  backend: "http://v3-service"
+                  percentage: 10
+                  priority: 1
+                  conditions:
+                      - type: "form"
+                        parameter: "MID"
+                        operator: "eq"
+                        value: "d"
+```
+
+**Explanation:**
+
+-   Routes 10% of matching requests to `v3-service`, allowing for a gradual rollout.
+-   The remaining 90% will follow other matching rules or default to the `defaultBackend`.
+
+### 5. Path Prefix Rewriting
+
+**Scenario:** Rewrite path prefix from `/api/v1` to `/v1` before forwarding to the backend.
+
+```yaml
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+    name: path-prefix-rewrite-middleware
+spec:
+    plugin:
+        abtest:
+            defaultBackend: "http://default-service"
+            rules:
+                - pathPrefix: "/api/v1"
+                  method: "GET"
+                  backend: "http://v1-service"
+                  pathPrefixRewrite: "/v1"
+                  priority: 1
+```
+
+**Explanation:**
+
+-   Matches any path starting with `/api/v1`.
+-   Rewrites the path prefix to `/v1` before sending to `v1-service`.
+
+### 6. Header-Based Routing
+
+**Scenario:** Route GET requests to `/language` with `Accept-Language` header containing `es` to `v2-service`.
+
+```yaml
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+    name: header-routing-middleware
+spec:
+    plugin:
+        abtest:
+            defaultBackend: "http://default-service"
+            rules:
+                - path: "/language"
+                  method: "GET"
+                  backend: "http://v2-service"
+                  priority: 1
+                  conditions:
+                      - type: "header"
+                        parameter: "Accept-Language"
+                        operator: "contains"
+                        value: "es"
+```
+
+**Explanation:**
+
+-   Routes requests based on the `Accept-Language` header.
+-   Useful for serving localized content.
+
+### 7. Priority-Based Rule Evaluation
+
+**Scenario:** Define multiple rules for `/priority-test` with different priorities.
+
+```yaml
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+    name: priority-routing-middleware
+spec:
+    plugin:
+        abtest:
+            defaultBackend: "http://default-service"
+            rules:
+                - path: "/priority-test"
+                  method: "GET"
+                  backend: "http://v1-service"
+                  priority: 10
+                - path: "/priority-test"
+                  method: "GET"
+                  backend: "http://v2-service"
+                  priority: 5
+```
+
+**Explanation:**
+
+-   The rule with higher priority (10) is evaluated first.
+-   Requests to `/priority-test` will be routed to `v1-service` due to the higher priority.
+
+### 8. Session Affinity
+
+**Scenario:** Ensure that users with the same session ID are consistently routed to the same backend.
+
+**Note:** Session affinity is automatically handled by the middleware using a session cookie named `forklift_id`. No additional configuration is required in the rules. Just define your rules as needed, and the middleware will ensure consistent routing based on the session ID.
+
+### 9. Complex Condition Matching
+
+**Scenario:** Route requests to `/premium-content` based on header and query parameter conditions.
+
+```yaml
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+    name: complex-condition-middleware
+spec:
+    plugin:
+        abtest:
+            defaultBackend: "http://default-service"
+            rules:
+                - path: "/premium-content"
+                  method: "GET"
+                  backend: "http://premium-service"
+                  priority: 1
+                  conditions:
+                      - type: "header"
+                        parameter: "Authorization"
+                        operator: "regex"
+                        value: "^Bearer premium-.*$"
+                      - type: "query"
+                        queryParam: "version"
+                        operator: "eq"
+                        value: "v2"
+```
+
+**Explanation:**
+
+-   Combines header and query parameter conditions.
+-   Uses regex operator to match authorization tokens.
+-   Only routes to `premium-service` if both conditions are met.
+
+### 10. Combining Percentage and Conditions
+
+**Scenario:** Send 50% of high-value users (determined by a cookie) to a new checkout process.
+
+```yaml
+apiVersion: traefik.containo.us/v1alpha1
+kind: Middleware
+metadata:
+    name: percentage-cookie-routing-middleware
+spec:
+    plugin:
+        abtest:
+            defaultBackend: "http://checkout-service"
+            rules:
+                - path: "/new-checkout"
+                  method: "GET"
+                  backend: "http://v2-checkout-service"
+                  percentage: 50
+                  priority: 1
+                  conditions:
+                      - type: "cookie"
+                        parameter: "user_segment"
+                        operator: "eq"
+                        value: "high_value"
+```
+
+**Explanation:**
+
+-   Routes 50% of requests from users with `user_segment=high_value` cookie to `v2-checkout-service`.
+-   Useful for testing new features with a subset of valuable users.
+
+## Applying the Middleware in Kubernetes
+
+To apply the middleware and use it with your IngressRoutes, you need to create the middleware resource and reference it in your ingress configurations.
+
+### Example IngressRoute
+
+```yaml
 apiVersion: traefik.containo.us/v1alpha1
 kind: IngressRoute
 metadata:
@@ -166,123 +345,99 @@ spec:
         - match: PathPrefix(`/`)
           kind: Rule
           services:
-              - name: default-backend
+              - name: default-service
                 port: 80
           middlewares:
               - name: abtest-middleware
 ```
 
+**Explanation:**
+
+-   References the middleware named `abtest-middleware`.
+-   All requests matching the route will be processed by the middleware before reaching the service.
+
 ## Advanced Use Cases
 
-1. **Gradual Rollout**:
+### A. Gradual Feature Rollouts with Percentage-Based Routing
 
-    ```yaml
-    - path: "/new-feature"
+**Scenario:** Gradually roll out a new feature by increasing the percentage over time.
+
+```yaml
+# Initial rollout with 10%
+rules:
+  - path: "/new-feature"
+    method: "GET"
+    backend: "http://v2-service"
+    percentage: 10
+    priority: 1
+
+# Later, increase to 30%
+rules:
+  - path: "/new-feature"
+    method: "GET"
+    backend: "http://v2-service"
+    percentage: 30
+    priority: 1
+```
+
+**Explanation:**
+
+-   Adjust the `percentage` field over time to control the rollout.
+
+### B. A/B Testing with Multiple Conditions
+
+**Scenario:** Perform A/B testing based on multiple user attributes.
+
+```yaml
+rules:
+    - path: "/experiment"
       method: "GET"
-      backend: "http://v2-service"
-      percentage: 10
-    ```
-
-    This rule will send 10% of GET requests for "/new-feature" to the V2 backend.
-
-2. **Path Prefix Rewriting**:
-
-    ```yaml
-    - pathPrefix: "/api/v1"
-      method: "GET"
-      backend: "http://v1-service"
-      pathPrefixRewrite: "/api"
-    ```
-
-    This rule will rewrite requests from "/api/v1/_" to "/api/_" before sending them to the V1 backend.
-
-3. **Header-based Routing**:
-
-    ```yaml
-    - path: "/mobile-app"
-      method: "GET"
+      backend: "http://variant-a-service"
+      percentage: 50
+      priority: 1
       conditions:
           - type: "header"
             parameter: "User-Agent"
             operator: "contains"
             value: "Mobile"
-      backend: "http://mobile-service"
-    ```
-
-    This rule routes requests to a mobile-specific backend based on the User-Agent header.
-
-4. **Complex Condition Matching**:
-
-    ```yaml
-    - path: "/premium-content"
+    - path: "/experiment"
       method: "GET"
+      backend: "http://variant-b-service"
+      percentage: 50
+      priority: 1
       conditions:
           - type: "header"
-            parameter: "Authorization"
-            operator: "regex"
-            value: "^Bearer premium-.*$"
-          - type: "query"
-            queryParam: "version"
-            operator: "eq"
-            value: "v2"
-      backend: "http://premium-v2-service"
-    ```
+            parameter: "User-Agent"
+            operator: "contains"
+            value: "Desktop"
+```
 
-    This rule combines header and query parameter conditions to route premium users to a specific backend.
+**Explanation:**
 
-5. **Priority-based Routing**:
-
-    ```yaml
-    - path: "/api"
-      method: "GET"
-      backend: "http://v1-service"
-      priority: 1
-    - pathPrefix: "/api"
-      method: "GET"
-      backend: "http://v2-service"
-      priority: 2
-    ```
-
-    The rule with higher priority (2) will be evaluated first, allowing more specific rules to take precedence.
-
-6. **Form Data Routing for POST Requests**:
-
-    ```yaml
-    - path: "/submit-form"
-      method: "POST"
-      conditions:
-          - type: "form"
-            parameter: "userType"
-            operator: "eq"
-            value: "beta"
-      backend: "http://beta-form-handler"
-    ```
-
-    This rule routes POST requests with a specific form field value to a dedicated backend.
-
-7. **Combining Percentage and Conditions**:
-    ```yaml
-    - path: "/new-checkout"
-      method: "GET"
-      conditions:
-          - type: "cookie"
-            parameter: "user_segment"
-            operator: "eq"
-            value: "high_value"
-      backend: "http://v2-checkout"
-      percentage: 50
-    ```
-    This rule sends 50% of high-value users (determined by a cookie) to the new checkout process.
-
-These advanced use cases demonstrate the flexibility and power of the Traefik Forklift A/B Testing Middleware. You can combine various conditions, use gradual rollouts, and implement complex routing logic to suit your specific needs in both Docker Compose and Kubernetes environments.
+-   Splits traffic between two variants based on the `User-Agent` header.
+-   Each variant receives 50% of the traffic matching its condition.
 
 ## Troubleshooting
 
--   Check Traefik logs for any plugin-related errors
--   Verify that the plugin binary is correctly mounted in the Traefik container or pod
--   Ensure that the Middleware resource is correctly configured
--   Check that the IngressRoute or Docker labels are properly set to use the middleware
+-   **Check Traefik Logs:** Enable debug mode to see detailed logs from the middleware.
+-   **Verify Configuration:** Ensure that your Kubernetes resources are correctly defined and applied.
+-   **Session IDs:** Confirm that session cookies are properly set and used if session affinity is important for your use case.
+-   **Percentage Sum:** Ensure that the percentages in matching rules sum up to 100% if you want full traffic distribution among backends.
+
+## Additional Notes
+
+-   **Middleware Name:** The name you give to the middleware resource (e.g., `abtest-middleware`) must match the name referenced in your `IngressRoute`.
+-   **Plugin Availability:** Ensure that the Traefik plugin is available and correctly configured in your Traefik deployment. This may require adding the plugin to your Traefik static configuration.
+-   **Order of Evaluation:** Rules are evaluated based on their `priority`. Higher priority rules are evaluated first.
 
 ## License
 
 This project is licensed under the MIT License.
+
+---
+
+**Note:** When applying these configurations to your Kubernetes cluster, ensure that:
+
+-   The services referenced in the `backend` fields are accessible and correctly defined.
+-   The plugin is enabled in your Traefik deployment.
+-   Any sensitive values are appropriately secured (e.g., using Kubernetes secrets for backend URLs if needed).

@@ -1,11 +1,8 @@
 version: '3'
 
-# https://github.com/traefik/traefik/issues/9512
-# There is an issue pulling the plugin in new versions
 services:
   traefik:
     image: traefik:v2.8.3
-    #image: traefik:v3.1.2
     environment:
       DEBUG: true
     command:
@@ -14,10 +11,6 @@ services:
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
       - "--log.level=DEBUG"
-        #- "--experimental.Plugins.abtest.moduleName=github.com/daemonp/forklift"
-        #- "--experimental.plugins.abtest.version=v0.1.6"
-      #- "--experimental.plugins.example.modulename=github.com/traefik/plugindemo"
-      #- "--experimental.plugins.example.version=v0.2.2"
       - "--experimental.localPlugins.abtest.moduleName=github.com/daemonp/forklift"
     ports:
       - "80:80"
@@ -27,6 +20,13 @@ services:
       - ./:/plugins-local/src/github.com/daemonp/forklift
     labels:
       - "traefik.enable=true"
+
+  default:
+    image: hashicorp/http-echo
+    command: ["-text", "Default Backend"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.default.loadbalancer.server.port=5678"
 
   echo1:
     image: hashicorp/http-echo
@@ -42,6 +42,20 @@ services:
       - "traefik.enable=true"
       - "traefik.http.services.echo2.loadbalancer.server.port=5678"
 
+  echo3:
+    image: hashicorp/http-echo
+    command: ["-text", "Hello from V3"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.echo3.loadbalancer.server.port=5678"
+
+  echo4:
+    image: hashicorp/http-echo
+    command: ["-text", "Hello from V4"]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.echo4.loadbalancer.server.port=5678"
+
   abtest:
     image: traefik/whoami
     labels:
@@ -49,22 +63,39 @@ services:
       - "traefik.http.routers.abtest.rule=PathPrefix(`/`)"
       - "traefik.http.routers.abtest.entrypoints=web"
       - "traefik.http.routers.abtest.middlewares=abtest-middleware"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.v1backend=http://echo1:5678"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.v2backend=http://echo2:5678"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.defaultBackend=http://default:5678"
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].path=/"
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].method=GET"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].backend=http://echo1:5678"
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].percentage=50"
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].path=/"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].method=POST"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].conditions[0].type=form"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].conditions[0].parameter=MID"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].conditions[0].operator=eq"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].conditions[0].value=a"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].percentage=100"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].path=/query-test"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].method=GET"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].backend=http://echo2:5678"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].percentage=50"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].path=/v3"
       - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].method=GET"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].conditions[0].type=query"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].conditions[0].queryParam=mid"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].conditions[0].operator=eq"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].conditions[0].value=two"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].backend=http://echo2:5678"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].backend=http://echo3:5678"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].path=/"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].method=POST"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].conditions[0].type=form"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].conditions[0].parameter=MID"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].conditions[0].operator=eq"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].conditions[0].value=a"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].backend=http://echo2:5678"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].path=/query-test"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].method=GET"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].conditions[0].type=query"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].conditions[0].queryParam=mid"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].conditions[0].operator=eq"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].conditions[0].value=two"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].backend=http://echo2:5678"
+      # New Rule for MID=d with 10% traffic to echo3
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].path=/"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].method=POST"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].conditions[0].type=form"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].conditions[0].parameter=MID"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].conditions[0].operator=eq"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].conditions[0].value=d"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].backend=http://echo3:5678"
+      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].percentage=10"
+
