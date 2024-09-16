@@ -285,7 +285,7 @@ func (a *Forklift) processRulesForPath(rules []RoutingRule, sessionID string) Se
 	// If we reach here, we only have percentage-based rules for this path
 	backendPercentages := a.calculateBackendPercentages(rules)
 	selectedBackend := a.selectBackendByPercentageAndRuleHash(sessionID, backendPercentages, rules)
-	
+
 	for _, rule := range rules {
 		if rule.Backend == selectedBackend {
 			return SelectedBackend{Backend: selectedBackend, Rule: &rule}
