@@ -6,55 +6,56 @@ services:
     environment:
       DEBUG: true
     command:
-      - "--api.insecure=true"                                       # Enable Traefik's API/dashboard (insecure)
-      - "--providers.docker=true"                                   # Enable Docker provider
-      - "--providers.docker.exposedbydefault=false"                # Disable exposing all Docker containers by default
-      - "--entrypoints.web.address=:80"                            # Define entrypoint 'web' on port 80
-      - "--log.level=DEBUG"                                        # Set Traefik's log level to DEBUG
-      - "--experimental.localPlugins.forklift.moduleName=github.com/daemonp/forklift"  # Define the 'forklift' plugin
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--log.level=DEBUG"
+      - "--experimental.localPlugins.forklift.moduleName=github.com/daemonp/forklift"
     ports:
-      - "80:80"                                                    # Expose Traefik on port 80
-      - "8080:8080"                                                # Expose Traefik's dashboard on port 8080
+      - "80:80"
+      - "8080:8080"
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro              # Mount Docker socket for Traefik to listen to Docker events
-      - ./:/plugins-local/src/github.com/daemonp/forklift  # Mount the 'forklift' plugin directory
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+        # Mount the 'forklift' plugin directory
+      - ./:/plugins-local/src/github.com/daemonp/forklift
     labels:
-      - "traefik.enable=true"                                      # Enable Traefik for this service
+      - "traefik.enable=true"
 
   default:
     image: hashicorp/http-echo
     command: ["-text", "Default Backend"]
     labels:
-      - "traefik.enable=true"                                      # Enable Traefik for this service
-      - "traefik.http.services.default.loadbalancer.server.port=5678"  # Define the backend port
+      - "traefik.enable=true"
+      - "traefik.http.services.default.loadbalancer.server.port=5678"
 
   echo1:
     image: hashicorp/http-echo
     command: ["-text", "Hello from V1"]
     labels:
-      - "traefik.enable=true"                                      # Enable Traefik for this service
-      - "traefik.http.services.echo1.loadbalancer.server.port=5678"  # Define the backend port
+      - "traefik.enable=true"
+      - "traefik.http.services.echo1.loadbalancer.server.port=5678"
 
   echo2:
     image: hashicorp/http-echo
     command: ["-text", "Hello from V2"]
     labels:
-      - "traefik.enable=true"                                      # Enable Traefik for this service
-      - "traefik.http.services.echo2.loadbalancer.server.port=5678"  # Define the backend port
+      - "traefik.enable=true"
+      - "traefik.http.services.echo2.loadbalancer.server.port=5678"
 
   echo3:
     image: hashicorp/http-echo
     command: ["-text", "Hello from V3"]
     labels:
-      - "traefik.enable=true"                                      # Enable Traefik for this service
-      - "traefik.http.services.echo3.loadbalancer.server.port=5678"  # Define the backend port
+      - "traefik.enable=true"
+      - "traefik.http.services.echo3.loadbalancer.server.port=5678"
 
   echo4:
     image: hashicorp/http-echo
     command: ["-text", "Hello from V4"]
     labels:
-      - "traefik.enable=true"                                      # Enable Traefik for this service
-      - "traefik.http.services.echo4.loadbalancer.server.port=5678"  # Define the backend port
+      - "traefik.enable=true"
+      - "traefik.http.services.echo4.loadbalancer.server.port=5678"
 
   forklift:
     image: traefik/whoami
