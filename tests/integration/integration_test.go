@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -94,15 +95,15 @@ func TestIntegration(t *testing.T) {
 		hitsEcho1 := 0
 		hitsEcho2 := 0
 
-		for i := 0; i < totalRequests; i++ {
+		for i := range totalRequests {
 			req, err := http.NewRequest(http.MethodGet, traefikURL+"/", nil)
 			if err != nil {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 
 			// Add a unique session ID for each request
-			sessionID := fmt.Sprintf("session-%d", i)
-			req.Header.Set("Cookie", fmt.Sprintf("SESSION=%s", sessionID))
+			sessionID := "session-" + strconv.Itoa(i)
+			req.Header.Set("Cookie", "SESSION="+sessionID)
 
 			resp, err := client.Do(req)
 			if err != nil {
