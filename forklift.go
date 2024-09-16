@@ -45,6 +45,7 @@ const (
 	hashModulo           = 10000
 	sessionIDByteLength  = 32
 	maxPercentage        = 100.0
+	percentageScale      = 100.0
 )
 
 // Forklift is the main struct for the middleware.
@@ -287,7 +288,7 @@ func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backen
 		totalPercentage += percentage
 	}
 
-	scaledHashValue := hashValue * 100 // Scale hash to 0-100 range
+	scaledHashValue := hashValue * percentageScale // Scale hash to 0-100 range
 
 	var cumulativePercentage float64
 	for _, backend := range backends {
