@@ -79,7 +79,7 @@ func CreateConfig() *config.Config {
 
 // New creates a new middleware.
 func New(ctx context.Context, next http.Handler, cfg interface{}, name string) (http.Handler, error) {
-	logger := logger.NewLogger("forklift")
+	// logger := logger.NewLogger("forklift")
 
 	parsedConfig, ok := cfg.(*config.Config)
 	if !ok {
@@ -281,7 +281,7 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) SelectedBa
 func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backendPercentages map[string]float64, matchingRules []RoutingRule) string {
 	backends := a.sortBackends(backendPercentages)
 	hashValue := a.calculateHash(sessionID, matchingRules)
-	
+
 	totalPercentage := 0.0
 	for _, percentage := range backendPercentages {
 		totalPercentage += percentage
@@ -316,6 +316,7 @@ func (a *Forklift) sortBackends(backendPercentages map[string]float64) []string 
 	return backends
 }
 
+/*
 func (a *Forklift) selectBackendFromRanges(backends []string, backendPercentages map[string]float64, hashValue float64) string {
 	cumulativeRanges := a.createCumulativeRanges(backends, backendPercentages)
 
@@ -359,6 +360,7 @@ func (a *Forklift) createCumulativeRanges(backends []string, backendPercentages 
 
 	return ranges
 }
+*/
 
 func (a *Forklift) calculateHash(sessionID string, matchingRules []RoutingRule) float64 {
 	h := fnv.New64a()

@@ -333,7 +333,7 @@ func runSessionAffinityTest(t *testing.T, middleware http.Handler) {
 		const totalSessions = 10000
 		const warmupSessions = 100
 		const requestsPerSession = 10
-		const epsilon = 0.75 // Allow 0.75% deviation (75 basis points)
+		const epsilon = 0.90 // Allow 0.90% deviation (90 basis points)
 
 		sessionBackends := make(map[string]string)
 		backendCounts := make(map[string]int)

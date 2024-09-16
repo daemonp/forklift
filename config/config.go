@@ -57,7 +57,7 @@ func LoadConfig(yamlConfig string) (*Config, error) {
 		return nil, err
 	}
 
-	// Load configuration from file if specified
+	// Load configuration from file if specified.
 	if config.ConfigFile != "" {
 		err = config.loadFromFile()
 		if err != nil {
@@ -71,7 +71,7 @@ func LoadConfig(yamlConfig string) (*Config, error) {
 	return config, nil
 }
 
-// loadFromFile loads configuration from the specified file
+// loadFromFile loads configuration from the specified file.
 func (c *Config) loadFromFile() error {
 	data, err := os.ReadFile(c.ConfigFile)
 	if err != nil {
@@ -81,7 +81,7 @@ func (c *Config) loadFromFile() error {
 	return yaml.Unmarshal(data, c)
 }
 
-// applyEnvironmentVariables overrides configuration with environment variables
+// applyEnvironmentVariables overrides configuration with environment variables.
 func (c *Config) applyEnvironmentVariables() {
 	if c.DefaultBackendEnv != "" {
 		if value, exists := os.LookupEnv(c.DefaultBackendEnv); exists {
