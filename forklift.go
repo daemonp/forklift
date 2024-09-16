@@ -241,6 +241,8 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) SelectedBa
 		}
 	}
 
+	a.logger.Debugf("Session ID for backend selection: %s", sessionID)
+
 	// Group rules by path
 	rulesByPath := make(map[string][]RoutingRule)
 	for _, rule := range matchingRules {
@@ -288,7 +290,7 @@ func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backen
 		totalPercentage += percentage
 	}
 
-	scaledHashValue := hashValue * totalPercentage
+	scaledHashValue := hashValue * 100 // Scale hash to 0-100 range
 
 	var cumulativePercentage float64
 	for _, backend := range backends {
