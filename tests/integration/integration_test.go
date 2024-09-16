@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -34,6 +35,12 @@ func TestIntegration(t *testing.T) {
 			expectedBodies: []string{"Hello from V1", "Hello from V2"},
 		},
 		{
+			name:           "GET /v2 should route to echo2",
+			path:           "/v2",
+			method:         "GET",
+			expectedBodies: []string{"Hello from V2"},
+		},
+		{
 			name:           "GET /v3 should route to echo3",
 			path:           "/v3",
 			method:         "GET",
@@ -48,6 +55,16 @@ func TestIntegration(t *testing.T) {
 				"Content-Type": "application/x-www-form-urlencoded",
 			},
 			expectedBodies: []string{"Hello from V2"},
+		},
+		{
+			name:   "POST / with MID=default should route to default",
+			path:   "/",
+			method: "POST",
+			body:   "MID=default",
+			headers: map[string]string{
+				"Content-Type": "application/x-www-form-urlencoded",
+			},
+			expectedBodies: []string{"Default Backend"},
 		},
 		{
 			name:           "GET /query-test?mid=two should route to echo2",
@@ -73,15 +90,19 @@ func TestIntegration(t *testing.T) {
 
 	// Additional test for percentage-based routing
 	t.Run("Percentage-based routing for GET /", func(t *testing.T) {
-		totalRequests := 1000
+		totalRequests := 10000
 		hitsEcho1 := 0
 		hitsEcho2 := 0
 
-		for range totalRequests {
+		for i := 0; i < totalRequests; i++ {
 			req, err := http.NewRequest(http.MethodGet, traefikURL+"/", nil)
 			if err != nil {
 				t.Fatalf("Failed to create request: %v", err)
 			}
+
+			// Add a unique session ID for each request
+			sessionID := fmt.Sprintf("session-%d", i)
+			req.Header.Set("Cookie", fmt.Sprintf("SESSION=%s", sessionID))
 
 			resp, err := client.Do(req)
 			if err != nil {
@@ -109,10 +130,11 @@ func TestIntegration(t *testing.T) {
 
 		t.Logf("Echo1: %.2f%%, Echo2: %.2f%%", percentageEcho1, percentageEcho2)
 
-		if percentageEcho1 < 45 || percentageEcho1 > 55 {
+		tolerance := 2.0 // Allow for 2% tolerance
+		if percentageEcho1 < 50-tolerance || percentageEcho1 > 50+tolerance {
 			t.Errorf("Expected Echo1 to receive approximately 50%% of traffic, got %.2f%%", percentageEcho1)
 		}
-		if percentageEcho2 < 45 || percentageEcho2 > 55 {
+		if percentageEcho2 < 50-tolerance || percentageEcho2 > 50+tolerance {
 			t.Errorf("Expected Echo2 to receive approximately 50%% of traffic, got %.2f%%", percentageEcho2)
 		}
 	})

@@ -3,6 +3,7 @@ package tests
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/daemonp/forklift"
+	"github.com/daemonp/forklift/config"
 )
 
 const defaultBufferSize = 1024
@@ -126,9 +128,9 @@ func TestForkliftPathPrefixRewrite(t *testing.T) {
 	defer v2Server.close()
 
 	// Create Forklift configuration
-	config := &forklift.Config{
+	config := &config.Config{
 		DefaultBackend: v1Server.URL(),
-		Rules: []forklift.RoutingRule{
+		Rules: []config.RoutingRule{
 			{
 				PathPrefix: "/api",
 				Backend:    v2Server.URL(),
@@ -137,7 +139,7 @@ func TestForkliftPathPrefixRewrite(t *testing.T) {
 	}
 
 	// Create Forklift middleware
-	forkliftHandler, err := forklift.NewForklift(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}), config, "test")
+	forkliftHandler, err := forklift.NewForklift(context.Background(), http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}), config, "test")
 	if err != nil {
 		t.Fatalf("Failed to create Forklift middleware: %v", err)
 	}

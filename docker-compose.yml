@@ -2,100 +2,127 @@ version: '3'
 
 services:
   traefik:
-    image: traefik:v2.8.3
+    image: traefik:v3.1.2
     environment:
       DEBUG: true
     command:
-      - "--api.insecure=true"
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--log.level=DEBUG"
-      - "--experimental.localPlugins.abtest.moduleName=github.com/daemonp/forklift"
+      - "--api.insecure=true"                                       # Enable Traefik's API/dashboard (insecure)
+      - "--providers.docker=true"                                   # Enable Docker provider
+      - "--providers.docker.exposedbydefault=false"                # Disable exposing all Docker containers by default
+      - "--entrypoints.web.address=:80"                            # Define entrypoint 'web' on port 80
+      - "--log.level=DEBUG"                                        # Set Traefik's log level to DEBUG
+      - "--experimental.localPlugins.forklift.moduleName=github.com/daemonp/forklift"  # Define the 'forklift' plugin
     ports:
-      - "80:80"
-      - "8080:8080"
+      - "80:80"                                                    # Expose Traefik on port 80
+      - "8080:8080"                                                # Expose Traefik's dashboard on port 8080
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - ./:/plugins-local/src/github.com/daemonp/forklift
+      - /var/run/docker.sock:/var/run/docker.sock:ro              # Mount Docker socket for Traefik to listen to Docker events
+      - ./:/plugins-local/src/github.com/daemonp/forklift  # Mount the 'forklift' plugin directory
     labels:
-      - "traefik.enable=true"
+      - "traefik.enable=true"                                      # Enable Traefik for this service
 
   default:
     image: hashicorp/http-echo
     command: ["-text", "Default Backend"]
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.services.default.loadbalancer.server.port=5678"
+      - "traefik.enable=true"                                      # Enable Traefik for this service
+      - "traefik.http.services.default.loadbalancer.server.port=5678"  # Define the backend port
 
   echo1:
     image: hashicorp/http-echo
     command: ["-text", "Hello from V1"]
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.services.echo1.loadbalancer.server.port=5678"
+      - "traefik.enable=true"                                      # Enable Traefik for this service
+      - "traefik.http.services.echo1.loadbalancer.server.port=5678"  # Define the backend port
 
   echo2:
     image: hashicorp/http-echo
     command: ["-text", "Hello from V2"]
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.services.echo2.loadbalancer.server.port=5678"
+      - "traefik.enable=true"                                      # Enable Traefik for this service
+      - "traefik.http.services.echo2.loadbalancer.server.port=5678"  # Define the backend port
 
   echo3:
     image: hashicorp/http-echo
     command: ["-text", "Hello from V3"]
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.services.echo3.loadbalancer.server.port=5678"
+      - "traefik.enable=true"                                      # Enable Traefik for this service
+      - "traefik.http.services.echo3.loadbalancer.server.port=5678"  # Define the backend port
 
   echo4:
     image: hashicorp/http-echo
     command: ["-text", "Hello from V4"]
     labels:
-      - "traefik.enable=true"
-      - "traefik.http.services.echo4.loadbalancer.server.port=5678"
+      - "traefik.enable=true"                                      # Enable Traefik for this service
+      - "traefik.http.services.echo4.loadbalancer.server.port=5678"  # Define the backend port
 
-  abtest:
+  forklift:
     image: traefik/whoami
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.abtest.rule=PathPrefix(`/`)"
-      - "traefik.http.routers.abtest.entrypoints=web"
-      - "traefik.http.routers.abtest.middlewares=abtest-middleware"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.defaultBackend=http://default:5678"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].path=/"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].method=GET"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].backend=http://echo1:5678"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[0].percentage=50"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].path=/"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].method=GET"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].backend=http://echo2:5678"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[1].percentage=50"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].path=/v3"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].method=GET"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[2].backend=http://echo3:5678"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].path=/"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].method=POST"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].conditions[0].type=form"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].conditions[0].parameter=MID"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].conditions[0].operator=eq"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].conditions[0].value=a"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[3].backend=http://echo2:5678"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].path=/query-test"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].method=GET"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].conditions[0].type=query"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].conditions[0].queryParam=mid"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].conditions[0].operator=eq"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].conditions[0].value=two"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[4].backend=http://echo2:5678"
-      # New Rule for MID=d with 10% traffic to echo3
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].path=/"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].method=POST"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].conditions[0].type=form"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].conditions[0].parameter=MID"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].conditions[0].operator=eq"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].conditions[0].value=d"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].backend=http://echo3:5678"
-      - "traefik.http.middlewares.abtest-middleware.plugin.abtest.rules[5].percentage=10"
+      - "traefik.http.routers.forklift.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.forklift.entrypoints=web"
+      - "traefik.http.routers.forklift.middlewares=forklift-middleware"
 
+
+      # Configure the 'forklift-middleware' with the plugin settings
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.defaultBackend=http://default:5678"
+
+      # Define Routing Rule 0: GET /v2 → echo2 (Higher Priority)
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[0].path=/v2"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[0].method=GET"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[0].backend=http://echo2:5678"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[0].priority=2"
+
+      # Define Routing Rule 1: GET / → echo1 with 50% traffic
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[1].affinityToken=group1"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[1].path=/"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[1].method=GET"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[1].backend=http://echo1:5678"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[1].percentage=50"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[1].priority=1"
+
+      # Define Routing Rule 2: GET / → echo2 with 50% traffic
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[2].affinityToken=group2"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[2].path=/"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[2].method=GET"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[2].backend=http://echo2:5678"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[2].percentage=50"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[2].priority=1"
+
+      # Update subsequent rules with incremented indices
+      # Define Routing Rule 3: GET /v3 → echo3
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[3].path=/v3"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[3].method=GET"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[3].backend=http://echo3:5678"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[3].priority=2"
+
+      # Define Routing Rule 4: POST / with form parameter MID=a → echo2
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[4].path=/"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[4].method=POST"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[4].backend=http://echo2:5678"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[4].priority=2"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[4].conditions[0].type=form"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[4].conditions[0].parameter=MID"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[4].conditions[0].operator=eq"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[4].conditions[0].value=a"
+
+      
+      # Define Routing Rule 4: GET /query-test with query parameter mid=two → echo2
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[5].path=/query-test"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[5].method=GET"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[5].conditions[0].type=query"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[5].conditions[0].queryParam=mid"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[5].conditions[0].operator=eq"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[5].conditions[0].value=two"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[5].backend=http://echo2:5678"
+      
+      # Define Routing Rule 5: POST / with form parameter MID=d → echo3 with 10% traffic
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[6].path=/"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[6].method=POST"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[6].conditions[0].type=form"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[6].conditions[0].parameter=MID"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[6].conditions[0].operator=eq"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[6].conditions[0].value=d"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[6].backend=http://echo3:5678"
+      - "traefik.http.middlewares.forklift-middleware.plugin.forklift.rules[6].percentage=10"

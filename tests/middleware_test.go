@@ -2,6 +2,8 @@
 package tests
 
 import (
+	"context"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -9,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/daemonp/forklift"
+	"github.com/daemonp/forklift/config"
 )
 
 const sessionCookieName = "forklift_id"
@@ -49,23 +52,25 @@ func closeMockServers(servers map[string]*httptest.Server) {
 	}
 }
 
-func createTestConfig(servers map[string]*httptest.Server) *forklift.Config {
-	return &forklift.Config{
+func createTestConfig(servers map[string]*httptest.Server) *config.Config {
+	return &config.Config{
 		DefaultBackend: servers["default"].URL,
-		Rules: []forklift.RoutingRule{
+		Rules: []config.RoutingRule{
 			{
-				Path:       "/",
-				Method:     "GET",
-				Backend:    servers["echo1"].URL,
-				Percentage: 50,
-				Priority:   1,
+				Path:          "/",
+				Method:        "GET",
+				Backend:       servers["echo1"].URL,
+				Percentage:    50,
+				Priority:      1,
+				AffinityToken: "group1",
 			},
 			{
-				Path:       "/",
-				Method:     "GET",
-				Backend:    servers["echo2"].URL,
-				Percentage: 50,
-				Priority:   1,
+				Path:          "/",
+				Method:        "GET",
+				Backend:       servers["echo2"].URL,
+				Percentage:    50,
+				Priority:      1,
+				AffinityToken: "group2",
 			},
 			{
 				Path:     "/v3",
@@ -78,7 +83,7 @@ func createTestConfig(servers map[string]*httptest.Server) *forklift.Config {
 				Method:   "POST",
 				Backend:  servers["echo2"].URL,
 				Priority: 1,
-				Conditions: []forklift.RuleCondition{
+				Conditions: []config.RuleCondition{
 					{
 						Type:      "form",
 						Parameter: "MID",
@@ -92,7 +97,7 @@ func createTestConfig(servers map[string]*httptest.Server) *forklift.Config {
 				Method:   "GET",
 				Backend:  servers["echo2"].URL,
 				Priority: 1,
-				Conditions: []forklift.RuleCondition{
+				Conditions: []config.RuleCondition{
 					{
 						Type:       "query",
 						QueryParam: "mid",
@@ -113,7 +118,7 @@ func createTestConfig(servers map[string]*httptest.Server) *forklift.Config {
 				Backend:    servers["echo3"].URL,
 				Percentage: 10,
 				Priority:   1,
-				Conditions: []forklift.RuleCondition{
+				Conditions: []config.RuleCondition{
 					{
 						Type:      "form",
 						Parameter: "MID",
@@ -123,24 +128,25 @@ func createTestConfig(servers map[string]*httptest.Server) *forklift.Config {
 				},
 			},
 		},
+		Debug: false,
 	}
 }
 
-func createMiddleware(t *testing.T, config *forklift.Config) *forklift.Forklift {
+func createMiddleware(t *testing.T, cfg *config.Config) http.Handler {
 	t.Helper()
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("Next handler"))
 	})
 
-	middleware, err := forklift.NewForklift(next, config, "test-forklift")
+	middleware, err := forklift.New(context.Background(), next, cfg, "test-forklift")
 	if err != nil {
 		t.Fatalf("Failed to create Forklift middleware: %v", err)
 	}
 	return middleware
 }
 
-func runBasicTests(t *testing.T, middleware *forklift.Forklift) {
+func runBasicTests(t *testing.T, middleware http.Handler) {
 	t.Helper()
 	tests := []struct {
 		name             string
@@ -243,44 +249,67 @@ func runBasicTests(t *testing.T, middleware *forklift.Forklift) {
 	}
 }
 
-func runPercentageBasedRoutingTest(t *testing.T, middleware *forklift.Forklift) {
+func runPercentageBasedRoutingTest(t *testing.T, middleware http.Handler) {
 	t.Helper()
 	t.Run("Percentage-based routing for GET /", func(t *testing.T) {
-		totalRequests := 1000
-		hitsEcho1 := 0
-		hitsEcho2 := 0
+		const totalRequests = 10000
+		const warmupRequests = 1000
+		const testRuns = 2
+		const epsilon = 0.5 // Allow 0.5% deviation
 
-		for range totalRequests {
-			req := createTestRequest(t, "GET", "/", nil, nil)
-			rr := httptest.NewRecorder()
-			middleware.ServeHTTP(rr, req)
+		runTest := func() (float64, float64) {
+			hitsEcho1, hitsEcho2 := 0, 0
 
-			body := strings.TrimSpace(rr.Body.String())
-			switch body {
-			case "Hello from V1":
-				hitsEcho1++
-			case "Hello from V2":
-				hitsEcho2++
-			default:
-				t.Errorf("Unexpected response body: %v", body)
+			// Warm-up phase
+			for range warmupRequests {
+				req := createTestRequest(t, "GET", "/", nil, nil)
+				rr := httptest.NewRecorder()
+				middleware.ServeHTTP(rr, req)
 			}
+
+			// Actual test
+			for range totalRequests {
+				req := createTestRequest(t, "GET", "/", nil, nil)
+				rr := httptest.NewRecorder()
+				middleware.ServeHTTP(rr, req)
+
+				body := strings.TrimSpace(rr.Body.String())
+				switch body {
+				case "Hello from V1":
+					hitsEcho1++
+				case "Hello from V2":
+					hitsEcho2++
+				default:
+					t.Errorf("Unexpected response body: %v", body)
+				}
+			}
+
+			percentageEcho1 := float64(hitsEcho1) / float64(totalRequests) * 100
+			percentageEcho2 := float64(hitsEcho2) / float64(totalRequests) * 100
+
+			return percentageEcho1, percentageEcho2
 		}
 
-		percentageEcho1 := float64(hitsEcho1) / float64(totalRequests) * 100
-		percentageEcho2 := float64(hitsEcho2) / float64(totalRequests) * 100
-
-		t.Logf("Echo1: %.2f%%, Echo2: %.2f%%", percentageEcho1, percentageEcho2)
-
-		if percentageEcho1 < 45 || percentageEcho1 > 55 {
-			t.Errorf("Expected Echo1 to receive approximately 50%% of traffic, got %.2f%%", percentageEcho1)
+		var totalPercentageEcho1, totalPercentageEcho2 float64
+		for i := range testRuns {
+			percentageEcho1, percentageEcho2 := runTest()
+			totalPercentageEcho1 += percentageEcho1
+			totalPercentageEcho2 += percentageEcho2
+			t.Logf("Run %d - Echo1: %.2f%%, Echo2: %.2f%%", i+1, percentageEcho1, percentageEcho2)
 		}
-		if percentageEcho2 < 45 || percentageEcho2 > 55 {
-			t.Errorf("Expected Echo2 to receive approximately 50%% of traffic, got %.2f%%", percentageEcho2)
+
+		avgPercentageEcho1 := totalPercentageEcho1 / float64(testRuns)
+		avgPercentageEcho2 := totalPercentageEcho2 / float64(testRuns)
+
+		t.Logf("Average over %d runs - Echo1: %.2f%%, Echo2: %.2f%%", testRuns, avgPercentageEcho1, avgPercentageEcho2)
+
+		if math.Abs(avgPercentageEcho1-50) > epsilon || math.Abs(avgPercentageEcho2-50) > epsilon {
+			t.Errorf("Expected both backends to receive 50%% ± %.2f%% of traffic, got Echo1: %.2f%%, Echo2: %.2f%%", epsilon, avgPercentageEcho1, avgPercentageEcho2)
 		}
 	})
 }
 
-func runDefaultBackendTest(t *testing.T, middleware *forklift.Forklift) {
+func runDefaultBackendTest(t *testing.T, middleware http.Handler) {
 	t.Helper()
 	t.Run("Routing to default backend when no rules match", func(t *testing.T) {
 		req := createTestRequest(t, "GET", "/non-existent", nil, nil)
@@ -298,47 +327,81 @@ func runDefaultBackendTest(t *testing.T, middleware *forklift.Forklift) {
 	})
 }
 
-func runSessionAffinityTest(t *testing.T, middleware *forklift.Forklift) {
+func runSessionAffinityTest(t *testing.T, middleware http.Handler) {
 	t.Helper()
 	t.Run("Session affinity test", func(t *testing.T) {
-		req := createTestRequest(t, "GET", "/", nil, nil)
-		rr := httptest.NewRecorder()
-		middleware.ServeHTTP(rr, req)
+		const totalSessions = 10000
+		const warmupSessions = 100
+		const requestsPerSession = 10
+		const epsilon = 0.90 // Allow 0.90% deviation (90 basis points)
 
-		cookies := rr.Result().Cookies()
-		if len(cookies) == 0 {
-			t.Fatal("Expected a session cookie to be set")
-		}
+		sessionBackends := make(map[string]string)
+		backendCounts := make(map[string]int)
 
-		sessionID := ""
-		for _, cookie := range cookies {
-			if cookie.Name == sessionCookieName {
-				sessionID = cookie.Value
-				break
-			}
-		}
-
-		if sessionID == "" {
-			t.Fatal("Session ID not found in cookies")
-		}
-
-		// Make multiple requests with the same session ID
-		expectedBody := strings.TrimSpace(rr.Body.String())
-		for range 10 {
+		// Warm-up phase
+		for range warmupSessions {
 			req := createTestRequest(t, "GET", "/", nil, nil)
-			req.AddCookie(&http.Cookie{
-				Name:  sessionCookieName,
-				Value: sessionID,
-			})
+			rr := httptest.NewRecorder()
+			middleware.ServeHTTP(rr, req)
+		}
+
+		for i := range totalSessions {
+			req := createTestRequest(t, "GET", "/", nil, nil)
 			rr := httptest.NewRecorder()
 			middleware.ServeHTTP(rr, req)
 
+			cookies := rr.Result().Cookies()
+			sessionID := ""
+			for _, cookie := range cookies {
+				if cookie.Name == sessionCookieName {
+					sessionID = cookie.Value
+					break
+				}
+			}
+
+			if sessionID == "" {
+				t.Fatal("Session ID not found in cookies")
+			}
+
 			body := strings.TrimSpace(rr.Body.String())
-			if body != expectedBody {
-				t.Errorf("Expected consistent backend '%v', got '%v'", expectedBody, body)
+			sessionBackends[sessionID] = body
+			backendCounts[body]++
+
+			// Make additional requests with the same session ID
+			for range requestsPerSession {
+				req := createTestRequest(t, "GET", "/", nil, nil)
+				req.AddCookie(&http.Cookie{
+					Name:  sessionCookieName,
+					Value: sessionID,
+				})
+				rr := httptest.NewRecorder()
+				middleware.ServeHTTP(rr, req)
+
+				newBody := strings.TrimSpace(rr.Body.String())
+				if newBody != body {
+					t.Errorf("Session affinity broken. Session ID %s: Expected backend '%v', got '%v'", sessionID, body, newBody)
+				}
+			}
+
+			if (i+1)%2000 == 0 {
+				t.Logf("Processed %d sessions", i+1)
+				logBackendDistribution(t, backendCounts, i+1, epsilon)
 			}
 		}
+
+		logBackendDistribution(t, backendCounts, totalSessions, epsilon)
 	})
+}
+
+func logBackendDistribution(t *testing.T, backendCounts map[string]int, totalSessions int, epsilon float64) {
+	t.Helper()
+	for backend, count := range backendCounts {
+		percentage := float64(count) / float64(totalSessions) * 100
+		t.Logf("Backend %s: %.2f%% (%d/%d)", backend, percentage, count, totalSessions)
+		if math.Abs(percentage-50) > epsilon {
+			t.Errorf("Backend distribution for %s is outside the expected range: %.2f%%", backend, percentage)
+		}
+	}
 }
 
 func createTestRequest(t *testing.T, method, path string, headers map[string]string, body url.Values) *http.Request {

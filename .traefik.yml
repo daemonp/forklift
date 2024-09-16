@@ -1,13 +1,14 @@
-displayName: AB Testing Middleware
+displayName: Forklift
 type: middleware
 import: github.com/daemonp/forklift
-summary: A middleware for A/B testing in Traefik
+summary: 'A/B testing and traffic splitting middleware for Traefik'
 testData:
-  DefaultBackend: "http://default-backend.example.com"
-  Rules:
-    - Path: "/test"
-      Method: "GET"
-      Backend: "http://v1-backend.example.com"
-    - Path: "/test2"
-      Method: "GET"
-      Backend: "http://v2-backend.example.com"
+  defaultBackend: http://localhost:8080
+  defaultBackendEnv: FORKLIFT_DEFAULT_BACKEND
+  debugEnv: FORKLIFT_DEBUG
+  configFile: /etc/traefik/forklift.yaml
+  rules:
+    - path: /test
+      backend: http://localhost:8081
+      percentage: 50
+  debug: false
