@@ -90,10 +90,7 @@ func New(ctx context.Context, next http.Handler, cfg interface{}, name string) (
 		return nil, errDefaultBackendNotSet
 	}
 
-	if parsedConfig.Debug {
-		logger.Debugf("Creating new Forklift middleware with config: %+v", parsedConfig)
-	}
-
+	// Remove debug logging of entire config
 	forklift, err := NewForklift(ctx, next, parsedConfig, name)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Forklift middleware: %w", err)
@@ -241,7 +238,7 @@ func (a *Forklift) selectBackend(req *http.Request, sessionID string) SelectedBa
 		}
 	}
 
-	a.logger.Debugf("Session ID for backend selection: %s", sessionID)
+	// Remove the debug log for session ID
 
 	// Group rules by path
 	rulesByPath := make(map[string][]RoutingRule)
@@ -297,9 +294,7 @@ func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backen
 		cumulativePercentage += backendPercentages[backend]
 		if scaledHashValue <= cumulativePercentage {
 			if a.config.Debug {
-				a.logger.Debugf("Selected backend: %s (hash value: %f, scaled hash value: %f, cumulative percentage: %f, total percentage: %f)", 
-					backend, hashValue, scaledHashValue, cumulativePercentage, totalPercentage)
-				a.logger.Debugf("Backend percentages: %v", backendPercentages)
+				a.logger.Debugf("Selected backend: %s", backend)
 			}
 			return backend
 		}
@@ -307,9 +302,7 @@ func (a *Forklift) selectBackendByPercentageAndRuleHash(sessionID string, backen
 
 	// If no backend was selected, return the default backend
 	if a.config.Debug {
-		a.logger.Debugf("No backend selected, using default: %s (hash value: %f, scaled hash value: %f, total percentage: %f)", 
-			a.config.DefaultBackend, hashValue, scaledHashValue, totalPercentage)
-		a.logger.Debugf("Backend percentages: %v", backendPercentages)
+		a.logger.Debugf("No backend selected, using default: %s", a.config.DefaultBackend)
 	}
 	return a.config.DefaultBackend
 }
